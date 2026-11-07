@@ -39,7 +39,13 @@ async def launch_browser(pw) -> Browser:
 async def lifespan(app: FastAPI):
     pw = await async_playwright().start()
     state["browser"] = await launch_browser(pw)
+    poller = None
+    if claude.poll_enabled():
+        # 取れたら画像キャッシュを捨てて、次のアクセスで描き直す
+        poller = asyncio.create_task(claude.poll_loop(on_update=lambda: state.update(png=None)))
     yield
+    if poller:
+        poller.cancel()
     await state["browser"].close()
     await pw.stop()
 

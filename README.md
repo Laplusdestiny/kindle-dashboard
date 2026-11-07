@@ -63,15 +63,43 @@ docker compose up -d --build
 | `CACHE_SECONDS` | 同じ画像を使い回す秒数 |
 | `SHOW_CLAUDE` | `0` で Claude 使用量パネルを隠す |
 | `PUSH_TOKEN` | 設定すると使用量の送信にこのトークンが必要になる |
+| `CLAUDE_CODE_OAUTH_TOKEN` | `claude setup-token` のトークン。設定するとコンテナ内で使用量を定期取得する |
+| `CLAUDE_POLL_MINUTES` | 上の取得間隔（分、既定15）。`0` で取得しない |
 | `DATA_DIR` | 受け取った使用量の保存先（既定 `data/`、Docker では `./data` をマウント） |
 
 ## Claude の使用量を表示する
 
-NAS には Claude のトークンを置きません。Claude Code を使う PC から、使用量を `POST /claude-usage` で送ります。
-受け取った値は `data/claude_usage.json` に保存されます。
+使用量の取り方は次の3通りです。どれで取った値も `data/claude_usage.json` に保存され、新しい値が表示に使われます。
 リセット時刻を過ぎた枠は「リセット済み」（残り100%）と表示されます。
 
-### 方法A：statusline から自動で送る（おすすめ）
+### 方法A：コンテナ内の Claude Code で取得する（NAS だけで完結）
+
+イメージには Claude Code（ネイティブ版、バージョン固定）が入っています。
+`CLAUDE_CODE_OAUTH_TOKEN` を設定すると、サーバーが起動直後と `CLAUDE_POLL_MINUTES`（既定15分）ごとに次のことをします。
+
+1. haiku に「OK」とだけ返させる最小のリクエストを送る（`claude -p`、ツール・設定・MCP はすべて無効）。
+2. そのとき Claude Code が出す `rate_limit_event` から、5時間・週間の使用率を読む。
+
+1回の取得は約900トークンなので、プランの枠はほとんど減りません。
+
+1. PC で長期トークン（1年有効）を作ります。
+
+   ```bash
+   claude setup-token
+   ```
+
+2. NAS の `docker-compose.yml` と同じ場所に `.env` を作り、トークンを書きます。
+
+   ```bash
+   CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
+   ```
+
+3. `docker compose up -d --build` で起動し、`docker compose logs` に `Claude 使用量を更新` と出れば成功です。
+
+> トークンが漏れると、あなたのプランで推論ができてしまいます。`.env` は git に入れないでください（`.gitignore` 済み）。
+> このトークンでは使用量API（`/api/oauth/usage`）は呼べません（権限 `user:profile` が無いため）。そのため Claude Code の出力から読む方式にしています。
+
+### 方法B：PC の statusline から自動で送る
 
 Claude Code は statusline のコマンドに、`rate_limits`（5時間・週間の使用率とリセット時刻）を含む JSON を渡します。
 `~/.claude/settings.json` に次を追加すると、Claude Code を使うたびに送信されます。
@@ -92,7 +120,7 @@ statusline には `5h 23% · 週 62%` と表示されます。
 送信に失敗したときは60秒間送らないので、NAS が落ちていても statusline は遅くなりません。
 `rate_limits` が入るのは Pro/Max のサブスクリプションでログインしているときだけです。
 
-### 方法B：cron で定期的に送る
+### 方法C：PC の cron で定期的に送る
 
 Claude Code のログイン情報（`~/.claude/.credentials.json`）のアクセストークンで使用量APIを叩き、その結果を送ります。
 トークンの更新は Claude Code 本体に任せ、このスクリプトは読むだけです。

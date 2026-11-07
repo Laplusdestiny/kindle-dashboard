@@ -57,15 +57,25 @@ Claude パネルは、データがある状態で見る：`uv run kindle-dash-pu
 
 ## Claude 使用量まわりの制約
 
-- **NAS には Claude のトークンを置かない。** PC（Claude Code が動くマシン）から `POST /claude-usage` で送ってもらう方式にしている。
-  - NAS 側でログイン用トークンを更新すると、PC の Claude Code のログインが切れるおそれがある。
-  - `claude setup-token` の長期トークンには `user:profile` の権限が無く、使用量APIを呼べない。
-- 本命は statusline 経由。Claude Code の statusline JSON に入る `rate_limits.five_hour` / `seven_day`（`used_percentage`、`resets_at`）を使う。
-  - `resets_at` は実際には **epoch 秒**。ISO 文字列も受け付ける実装にしてある。
-  - `rate_limits` や、その中の各枠は欠けることがある。欠けていても落ちないようにする。
-- ユーザーの `~/.claude/settings.json` の statusLine は、`--passthrough ccstatusline` 付きで動いている。statusline として表示されるのは ccstatusline の出力。そのため、statusline モードでの標準出力の扱いを変えるときは注意する。
-- statusline は10秒ごとに呼ばれる。そのため送信は軽く保つ（同じ内容なら5分間は送らない、失敗後60秒は再送しない、タイムアウト1.5秒）。
-- `--oauth` が使う `/api/oauth/usage` は非公開のAPIで、仕様が変わることがある。
+使用量の入り方は3つある。どれも `data/claude_usage.json` に保存し、新しい値が勝つ。
+
+1. **コンテナ内の Claude Code**（`claude.poll_loop`）
+   - `CLAUDE_CODE_OAUTH_TOKEN`（`claude setup-token` のトークン）があるときだけ動く。
+   - `claude -p` を最小構成で実行し、stream-json の `rate_limit_event.rate_limit_info.unifiedWindows` を読む。
+   - `utilization` は **0〜1 の割合**、`resetsAt` は epoch 秒。保存前に0〜100へ変換している。
+   - setup-token には `user:profile` の権限が無く、`/api/oauth/usage` を呼べない。そのためこの方式にしている。
+   - `--bare` は OAuth を読まないので使えない。
+   - 1回あたり haiku で約900トークン消費する。取得間隔を短くしすぎない。
+   - Claude Code はイメージ内でバージョン固定（Dockerfile の `CLAUDE_CODE_VERSION`）、自動更新は無効。
+2. **PC の statusline から POST**（`push.py --statusline`）
+   - statusline JSON の `rate_limits.five_hour` / `seven_day` は、`used_percentage` が0〜100、`resets_at` が epoch 秒。
+   - ユーザーの `~/.claude/settings.json` では `--passthrough ccstatusline` 付きで動いており、statusline に表示されるのは ccstatusline の出力。そのため、statusline モードでの標準出力の扱いを変えるときは注意する。
+   - statusline は10秒ごとに呼ばれる。そのため送信は軽く保つ（同じ内容なら5分間は送らない、失敗後60秒は再送しない、タイムアウト1.5秒）。
+3. **PC の cron から POST**（`push.py --oauth`）
+   - 非公開の `/api/oauth/usage` を使う。未検証で、仕様が変わることがある。
+
+- `rate_limits` や、その中の各枠は欠けることがある。欠けていても落ちないようにする。
+- トークン類（`CLAUDE_CODE_OAUTH_TOKEN`、`PUSH_TOKEN`）は `.env` にだけ書く。`docker-compose.yml` やコードに値を書かない。
 
 ## Kindle 側
 

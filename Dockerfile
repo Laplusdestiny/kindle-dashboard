@@ -10,10 +10,18 @@ ENV PYTHONUNBUFFERED=1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     PATH="/srv/.venv/bin:$PATH"
 
-# 日本語フォント（明朝・ゴシック）
+# 日本語フォント（明朝・ゴシック）と、Claude Code のインストールに使う curl
 RUN apt-get update \
- && apt-get install -y --no-install-recommends fonts-noto-cjk \
+ && apt-get install -y --no-install-recommends fonts-noto-cjk curl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
+
+# Claude Code（使用量の取得用）。公式インストーラでネイティブ版をバージョン固定で入れる
+ARG CLAUDE_CODE_VERSION=2.1.311
+ENV DISABLE_AUTOUPDATER=1 \
+    DISABLE_TELEMETRY=1
+RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION} \
+ && ln -sf /root/.local/bin/claude /usr/local/bin/claude \
+ && claude --version
 
 WORKDIR /srv
 

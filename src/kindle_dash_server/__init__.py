@@ -18,7 +18,11 @@ def main() -> None:
     p.add_argument("--reload", action="store_true", help="コード・テンプレート変更で自動再起動（開発用）")
     args = p.parse_args()
 
+    import logging
+
     import uvicorn
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(message)s")
 
     uvicorn.run(
         "kindle_dash_server.main:app",
