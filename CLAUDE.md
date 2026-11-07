@@ -1,0 +1,81 @@
+# kindle-dash-server
+
+脱獄した Kindle Paperwhite 3（第7世代、1072×1448）の kindle-dash 向けに、ダッシュボード画像（8bitグレースケールPNG）を返すサーバー。
+NAS 上の Docker で動かす。開発と確認はこの PC で uv を使って行う。
+
+## コマンド
+
+```bash
+uv sync                                                      # 依存を入れる
+uv run playwright install chromium                           # 初回だけ
+uv run --env-file .env kindle-dash-snapshot -o out/dash.png  # PNGを1枚書き出す（サーバー不要）
+uv run --env-file .env kindle-dash-server --reload           # サーバー起動（.py/.html の変更で再起動）
+docker compose build                                         # 本番と同じイメージ
+```
+
+- `.env` は gitignore されている。雛形は `.env.example`。
+- `uv run --env-file` は、すでにシェルにある環境変数を上書きしない。そのため一時的な切り替えは `ORIENTATION=portrait uv run --env-file .env ...` のように書ける。
+- 確認用の出力は `out/` に、受け取った Claude 使用量は `data/` に置く（どちらも gitignore）。
+
+## 構成と流れ
+
+`src/kindle_dash_server/`（uv_build の src レイアウト。editable でインストールされる）
+
+- `data.py` … `collect()` がテンプレートに渡す値を集める（日付、Open-Meteo の天気、`claude.view()`）。
+- `templates/dashboard.html` … Jinja2 テンプレート。`body.landscape` / `body.portrait` でレイアウトを切り替える。
+- `main.py` … FastAPI のアプリ本体。
+  - 描画の流れ：HTML を Playwright の Chromium で撮影 → `to_kindle_png()` でグレースケール化 → 16階調に丸める →（必要なら回転）→ PNG。
+  - エンドポイント：`/dash.png`（`CACHE_SECONDS` の間キャッシュ）、`/preview`（撮影前のHTML）、`POST /claude-usage`、`GET /claude-usage`、`/health`。
+- `claude.py` … Claude 使用量を受け取り（`normalize`）、`data/claude_usage.json` へ保存し、表示用に整形する（`view`）。
+- `push.py` … PC 側で動かす送信コマンド `kindle-dash-push-claude`。`--statusline`、`--oauth`、`--file` の3方式。
+- `__init__.py` … `kindle-dash-server` / `kindle-dash-snapshot` の入口。
+
+向きは `ORIENTATION` だけで決まる。`SCREEN_WIDTH` / `SCREEN_HEIGHT` はどちらの順で書いても同じ結果になる。
+`LANDSCAPE_ROTATE=0` で横長PNG（1448×1072）、`90` / `270` で縦長PNGに回して出力する。
+
+## 変更後の確認（必須）
+
+テンプレート・CSS・表示データを変えたら、次の両方で PNG を書き出して目で見る。
+
+1. **ローカルで横置き**（本番の設定）：`uv run --env-file .env kindle-dash-snapshot -o out/dash.png` を実行し、その PNG を読んで確認する。
+2. **Docker でも1回**：ローカルには Noto CJK フォントが無く、文字の幅や高さが違う。そのため、はみ出しは Docker 上でしか分からないことがある。
+   - 再ビルドは不要。`-v $PWD/src:/srv/src:ro` で src をマウントすれば、そのまま反映される。
+   - ポート 8080 はユーザーが自分でサーバーを起動して使っていることが多いので、確認用には別のポート（例 18081）を使う。
+
+確認するのは、文字がはみ出していないか・フッターが切れていないか・折り返しで崩れていないか。
+Claude パネルは、データがある状態で見る：`uv run kindle-dash-push-claude --file examples/claude_usage.json --url ...`。
+
+確認用に起動したサーバーは PID を指定して止める（`ss -ltnp` で PID を調べる）。`pkill -f` は、パターンが自分のシェルのコマンドラインにも一致して、シェルごと落ちる。
+
+## E-Ink のデザインルール
+
+- 白地・墨（#000）・灰2段階（`--mid` #555、`--light` #bbb）だけを使う。出力は16階調に丸められる。
+- 細い線は潰れるので使わない。罫線や枠は 5〜6px 以上にする。
+- 文字は大きめにする。主役（日付・現在気温）は極端に大きく、補助情報は `--mid` で控えめにする。
+- 横置き・縦置きのどちらでも1画面に収める（`overflow: hidden` なので、はみ出すと黙って切れる）。主に使うのは横置き。
+- Jinja では `{{ x.pop }}` のような書き方をすると、辞書のキーより先に dict のメソッドが解決される。表示データのキーに `pop` / `items` / `keys` / `values` / `get` などを使わない（実際に `pop` で表示が崩れたことがある）。
+
+## Claude 使用量まわりの制約
+
+- **NAS には Claude のトークンを置かない。** PC（Claude Code が動くマシン）から `POST /claude-usage` で送ってもらう方式にしている。
+  - NAS 側でログイン用トークンを更新すると、PC の Claude Code のログインが切れるおそれがある。
+  - `claude setup-token` の長期トークンには `user:profile` の権限が無く、使用量APIを呼べない。
+- 本命は statusline 経由。Claude Code の statusline JSON に入る `rate_limits.five_hour` / `seven_day`（`used_percentage`、`resets_at`）を使う。
+  - `resets_at` は実際には **epoch 秒**。ISO 文字列も受け付ける実装にしてある。
+  - `rate_limits` や、その中の各枠は欠けることがある。欠けていても落ちないようにする。
+- ユーザーの `~/.claude/settings.json` の statusLine は、`--passthrough ccstatusline` 付きで動いている。statusline として表示されるのは ccstatusline の出力。そのため、statusline モードでの標準出力の扱いを変えるときは注意する。
+- statusline は10秒ごとに呼ばれる。そのため送信は軽く保つ（同じ内容なら5分間は送らない、失敗後60秒は再送しない、タイムアウト1.5秒）。
+- `--oauth` が使う `/api/oauth/usage` は非公開のAPIで、仕様が変わることがある。
+
+## Kindle 側
+
+- Kindle 側の `fetch-dashboard.sh` が `http://<NAS>:8080/dash.png` を取りに来る。HTTPS は証明書が古くて失敗しやすいので、LAN 内は HTTP にする。
+- **未確認**：横長PNG（`LANDSCAPE_ROTATE=0`）が Kindle で正しく表示されるか。横倒しや見切れになる場合は `90` / `270` にする（上下が逆なら入れ替える）。確認できたらここを更新する。
+
+## 進め方のルール
+
+- 次の2つは、行う前にユーザーに確認する。
+  - 依存の追加（`uv add`）。イメージサイズと NAS の負荷を抑えたいため。
+  - `docker-compose.yml` / `.env.example` の既定値の変更。本番の動作に影響するため。
+- CLAUDE.md、コミットメッセージ、コード内コメントは日本語で書く。
+- Git：変更ごとにブランチを切り、PR で `main` にマージする。コミットとプッシュは頼まれたときだけ行う。
