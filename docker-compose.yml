@@ -27,3 +27,8 @@ services:
       SHOW_CLAUDE: "1"
       # 設定すると POST /claude-usage に同じ値のトークンが必要になる（PC側は --token か KINDLE_DASH_TOKEN）
       PUSH_TOKEN: ""
+      # コンテナ内の Claude Code で使用量を取得する（claude setup-token で作ったトークン）。
+      # 値はここに書かず、docker-compose.yml と同じ場所の .env に CLAUDE_CODE_OAUTH_TOKEN=... と書く
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # 取得間隔（分）。0 で取得しない
+      CLAUDE_POLL_MINUTES: "15"
