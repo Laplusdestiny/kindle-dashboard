@@ -10,7 +10,7 @@ from datetime import datetime
 
 import httpx
 
-from . import claude
+from . import claude, train
 
 # WMO天気コード → 日本語
 WEATHER_TEXT = {
@@ -105,7 +105,11 @@ async def collect() -> dict:
         "error": None,
         "show_claude": os.getenv("SHOW_CLAUDE", "1") != "0",
         "claude": claude.view(),
+        "show_train": os.getenv("SHOW_TRAIN", "1") != "0",
+        "train": None,
     }
+    if ctx["show_train"]:
+        ctx["train"] = await train.view(now)
     try:
         ctx["weather"] = shape_weather(await fetch_weather(), now)
     except Exception as e:  # 天気が取れなくても日付だけは出す

@@ -25,21 +25,22 @@
   /* ---- 縦置き ---- */
   body.portrait {
     padding: 64px 72px 56px;
-    grid-template-rows: auto 1fr auto auto;
-    grid-template-areas: "date" "weather" "claude" "footer";
+    grid-template-rows: auto 1fr auto auto auto;
+    grid-template-areas: "date" "weather" "train" "claude" "footer";
     gap: 48px;
   }
-  /* ---- 横置き：左に日付とClaude、右に天気 ---- */
+  /* ---- 横置き：左に日付とClaude、右に天気と電車 ---- */
   body.landscape {
     padding: 52px 64px 40px;
     grid-template-columns: 480px 1fr;
-    grid-template-rows: auto 1fr auto;
-    grid-template-areas: "date weather" "claude weather" "footer footer";
+    grid-template-rows: auto 1fr auto auto;
+    grid-template-areas: "date weather" "claude weather" "claude train" "footer footer";
     column-gap: 72px; row-gap: 32px;
   }
   .date { grid-area: date; }
   .weather { grid-area: weather; min-width: 0; }
   .claude { grid-area: claude; align-self: end; min-width: 0; }
+  .train { grid-area: train; min-width: 0; }
   footer { grid-area: footer; }
 
   /* 日付：この画面の主役 */
@@ -116,13 +117,40 @@
   .portrait .claude-head, .portrait .claude-empty { grid-column: 1 / -1; }
   .claude-empty { font-size: 28px; color: var(--mid); white-space: normal; line-height: 1.4; }
 
+  /* 電車の発車時刻：時刻を大きく、種別と待ち時間は小さく */
+  .train { border-top: 6px solid var(--ink); padding-top: 14px; display: grid; gap: 10px; }
+  .train-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .train-title { font-size: 36px; font-weight: 700; }
+  .train-span { font-size: 26px; color: var(--mid); }
+  .deps { display: grid; grid-template-columns: repeat(4, 1fr); column-gap: 16px; row-gap: 8px; }
+  .dep-time { font-size: 50px; font-weight: 700; line-height: 1.05; letter-spacing: -.02em; }
+  .dep-sub { font-size: 26px; color: var(--mid); }
+  .dep-sub b { color: var(--ink); }
+  .train-empty { font-size: 30px; color: var(--mid); white-space: normal; }
+  .train-empty b { font-size: 44px; color: var(--ink); }
+  /* 横置きで電車を出すときは、右の列（天気＋電車）を詰めて1画面に収める */
+  .landscape.with-train { row-gap: 24px; }
+  .with-train .weather { gap: 20px; }
+  .with-train .now-temp { font-size: 132px; }
+  .with-train .now-sub { margin-top: 4px; }
+  .with-train .hours { padding-top: 14px; }
+  .with-train .hour .t { font-size: 42px; margin: 0; }
+  .with-train .hour .w { margin-top: 0; }
+  .with-train .days { gap: 4px; }
+  .with-train .dayrow { font-size: 34px; }
+  .portrait.with-train { gap: 20px; padding-top: 48px; }
+  .portrait.with-train .day { font-size: 200px; }
+  .portrait.with-train .weekday { font-size: 96px; }
+  .portrait.with-train .now-temp { font-size: 120px; }
+  .portrait.with-train .claude-head { display: none; }
+
   footer {
     display: flex; justify-content: space-between;
     font-size: 28px; color: var(--mid);
   }
 </style>
 </head>
-<body class="{{ 'landscape' if landscape else 'portrait' }}">
+<body class="{{ 'landscape' if landscape else 'portrait' }}{{ ' with-train' if show_train and train }}">
 
   <section class="date">
     <div class="day">{{ day }}</div>
@@ -189,6 +217,29 @@
       {% endfor %}
     {% else %}
       <div class="claude-empty">使用量をまだ受け取っていません。<br>PCから kindle-dash-push-claude で送ってください。</div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if show_train and train %}
+  <section class="train">
+    <div class="train-head">
+      <span class="train-title">{{ train.label }}</span>
+      <span class="train-span">{{ train.span }}分以内の発車</span>
+    </div>
+    {% if train.error %}
+      <div class="train-empty">{{ train.error }}</div>
+    {% elif train.rows %}
+      <div class="deps">
+        {% for d in train.rows %}
+        <div class="dep">
+          <div class="dep-time">{{ d.time }}</div>
+          <div class="dep-sub">{% if d.kind and d.kind != '普通' %}<b>{{ d.kind }}</b>{% else %}{{ d.kind }}{% endif %}{% if d.dest %} {{ d.dest }}{% endif %}・{{ d.wait }}分後</div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="train-empty">{{ train.span }}分以内の発車はありません{% if train.next %}。次は <b>{{ train.next }}</b>{% endif %}</div>
     {% endif %}
   </section>
   {% endif %}

@@ -59,13 +59,17 @@ docker compose up -d --build
 | `LATITUDE` / `LONGITUDE` / `PLACE_NAME` | 天気を取る地点と表示名 |
 | `SCREEN_WIDTH` / `SCREEN_HEIGHT` | 画面の画素数（縦横どちらの順で書いてもよい） |
 | `ORIENTATION` | `landscape`（横・既定）か `portrait`（縦） |
-| `LANDSCAPE_ROTATE` | `0` なら横長PNGのまま出力。Kindle側で回転しないなら `90` か `270` にすると縦長PNGに回して出力（上下逆なら入れ替え） |
+| `LANDSCAPE_ROTATE` | 横長のデザインを回して、縦長PNG（1072×1448）で出力する（既定 `90`）。`90` は Kindle の下端（電源ボタン・USB）が左に来る向き。上下が逆なら `270`。`0` だと横長PNGのままになり、Kindle では右側が切れる |
 | `CACHE_SECONDS` | 同じ画像を使い回す秒数 |
 | `SHOW_CLAUDE` | `0` で Claude 使用量パネルを隠す |
 | `PUSH_TOKEN` | 設定すると使用量の送信にこのトークンが必要になる |
 | `CLAUDE_CODE_OAUTH_TOKEN` | `claude setup-token` のトークン。設定するとコンテナ内で使用量を定期取得する |
 | `CLAUDE_POLL_MINUTES` | 上の取得間隔（分、既定15）。`0` で取得しない |
-| `DATA_DIR` | 受け取った使用量の保存先（既定 `data/`、Docker では `./data` をマウント） |
+| `DATA_DIR` | 受け取った使用量と、取得した時刻表の保存先（既定 `data/`、Docker では `./data` をマウント） |
+| `SHOW_TRAIN` | `0` で電車の発車時刻パネルを隠す |
+| `TRAIN_LABEL` | パネルの見出し（既定 `岡町 → 大阪梅田`） |
+| `TRAIN_TIMETABLE_URL` | 阪急の駅時刻表ページのURL。`{day}` が `w`（平日）/ `h`（土曜・休日）に置き換わる（既定は岡町駅 宝塚線 大阪梅田方面） |
+| `TRAIN_WINDOW_MINUTES` | 何分先までの発車を出すか（既定30） |
 
 ## Claude の使用量を表示する
 
@@ -140,6 +144,17 @@ curl http://localhost:8080/claude-usage
 ```
 
 `PUSH_TOKEN` を設定した場合は、PC 側で `--token <値>` を付けるか、環境変数 `KINDLE_DASH_TOKEN` を設定します。
+
+## 電車の発車時刻
+
+阪急公式サイトの駅時刻表ページ（平日・土曜休日の2枚）を取得して、今から30分以内の発車を表示する。
+
+- 時刻表は1日1回だけ取り直して `data/train/` に保存する。取得に失敗しても前回の分で表示を続ける。
+- 平日か土休日かは、内閣府の祝日CSV（月1回取得）で判定する。取れないときは土日だけで判定する。
+- 3時より前は前日のダイヤとして扱う。終電後は「次は 4:40」のように始発を出す。
+- 年末年始などの臨時ダイヤには対応していない。
+- 別の阪急の駅・方面にするには、駅ページ（例 `https://www.hankyu.co.jp/station/okamachi.html`）の時刻表リンク
+  `/station/html/HK-45_ta_1_w.html` の `_w` を `_{day}` にしたURLを `TRAIN_TIMETABLE_URL` に入れる。
 
 ## Kindle側の設定
 
