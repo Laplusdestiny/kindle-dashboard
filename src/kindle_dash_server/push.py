@@ -104,7 +104,7 @@ def run_statusline(url: str, token: str | None, passthrough: str | None) -> None
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Claude の使用量をダッシュボードサーバーへ送る")
-    p.add_argument("--url", default=os.getenv("KINDLE_DASH_URL", "http://localhost:8080"))
+    p.add_argument("--url", default=(os.getenv("KINDLE_DASH_URL") or "http://localhost:8080"))
     p.add_argument("--token", default=os.getenv("KINDLE_DASH_TOKEN"), help="サーバー側 PUSH_TOKEN と同じ値")
     mode = p.add_mutually_exclusive_group(required=True)
     mode.add_argument("--statusline", action="store_true", help="stdin の statusline JSON から送る")

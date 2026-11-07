@@ -13,7 +13,9 @@ uv run --env-file .env kindle-dash-server --reload           # サーバー起�
 docker compose build                                         # 本番と同じイメージ
 ```
 
-- `.env` は gitignore されている。雛形は `.env.example`。
+- 設定は `.env` に集約している（gitignore 済み、雛形は `.env.example`）。ローカルは `uv run --env-file .env`、Docker は compose の `env_file: .env` で同じファイルを読む。
+  - `docker-compose.yml` には設定値を書かない。既定値はコードの `os.getenv("X") or "既定"` にだけ置く（空の値も既定扱いにするため `os.getenv("X", "既定")` は使わない）。`TZ` だけは Dockerfile の `ENV` で既定を入れている。
+  - 設定を増やしたら、コードの既定値・`.env.example`（コメントで既定値を示す）・README の表の3か所をそろえる。
 - `uv run --env-file` は、すでにシェルにある環境変数を上書きしない。そのため一時的な切り替えは `ORIENTATION=portrait uv run --env-file .env ...` のように書ける。
 - 確認用の出力は `out/` に、受け取った Claude 使用量は `data/` に置く（どちらも gitignore）。
 
@@ -90,6 +92,6 @@ Claude パネルは、データがある状態で見る：`uv run kindle-dash-pu
 
 - 次の2つは、行う前にユーザーに確認する。
   - 依存の追加（`uv add`）。イメージサイズと NAS の負荷を抑えたいため。
-  - `docker-compose.yml` / `.env.example` の既定値の変更。本番の動作に影響するため。
+  - 設定の既定値（コードの `os.getenv` の既定・Dockerfile の `ENV`・`.env.example`）の変更。本番の動作に影響するため。
 - CLAUDE.md、コミットメッセージ、コード内コメントは日本語で書く。
 - Git：変更ごとにブランチを切り、PR で `main` にマージする。コミットとプッシュは頼まれたときだけ行う。

@@ -16,13 +16,13 @@ from playwright.async_api import Browser, async_playwright
 from . import claude
 from .data import collect
 
-WIDTH = int(os.getenv("SCREEN_WIDTH", "1072"))
-HEIGHT = int(os.getenv("SCREEN_HEIGHT", "1448"))
-LANDSCAPE = os.getenv("ORIENTATION", "portrait") == "landscape"
+WIDTH = int(os.getenv("SCREEN_WIDTH") or "1072")
+HEIGHT = int(os.getenv("SCREEN_HEIGHT") or "1448")
+LANDSCAPE = (os.getenv("ORIENTATION") or "landscape") == "landscape"
 # 横置き時の回転角（反時計回り）。0 なら横長画像のまま、90/270 なら縦長に回して出力。
 # Kindle の eips は画像を回転せずに縦長の画面へ描くので、実機では 90 か 270 にする
-ROTATE = int(os.getenv("LANDSCAPE_ROTATE", "0"))
-CACHE_SECONDS = int(os.getenv("CACHE_SECONDS", "60"))
+ROTATE = int(os.getenv("LANDSCAPE_ROTATE") or "90")
+CACHE_SECONDS = int(os.getenv("CACHE_SECONDS") or "60")
 # 設定すると POST /claude-usage に Authorization: Bearer <値> が必要になる
 PUSH_TOKEN = os.getenv("PUSH_TOKEN") or None
 

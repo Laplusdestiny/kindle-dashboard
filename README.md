@@ -43,8 +43,12 @@ uv run --env-file .env kindle-dash-server --reload
 ## NASで起動（Docker）
 
 ```bash
+cp .env.example .env    # 初回だけ。設定を変えるならこの .env を編集する
 docker compose up -d --build
 ```
+
+`docker-compose.yml` は `.env` をそのままコンテナに渡すだけで、設定値は持っていません。
+`.env` が無いと起動できないので、空でもよいので作っておいてください。
 
 - `http://<サーバーのIP>:8080/dash.png` … Kindleが取りに来る画像
 - `http://<サーバーのIP>:8080/preview` … PCのブラウザでレイアウト確認用
@@ -52,15 +56,19 @@ docker compose up -d --build
 
 イメージ内でも `uv sync --locked` で `uv.lock` どおりの版を入れるので、ローカルとNASで依存がずれません。
 
-## 設定（docker-compose.yml の environment / ローカルは .env）
+## 設定（.env）
+
+設定はすべて `.env` に書きます。ローカル（`uv run --env-file .env`）と Docker（`docker compose` の `env_file`）が同じファイルを読みます。
+`.env` に書いていない項目や、値が空の項目はコードの既定値になります。既定値は本番（Kindle で横置き）向けです。
 
 | 変数 | 内容 |
 |---|---|
+| `TZ` | タイムゾーン（既定 `Asia/Tokyo`） |
 | `LATITUDE` / `LONGITUDE` / `PLACE_NAME` | 天気を取る地点と表示名 |
 | `SCREEN_WIDTH` / `SCREEN_HEIGHT` | 画面の画素数（縦横どちらの順で書いてもよい） |
 | `ORIENTATION` | `landscape`（横・既定）か `portrait`（縦） |
 | `LANDSCAPE_ROTATE` | 横長のデザインを回して、縦長PNG（1072×1448）で出力する（既定 `90`）。`90` は Kindle の下端（電源ボタン・USB）が左に来る向き。上下が逆なら `270`。`0` だと横長PNGのままになり、Kindle では右側が切れる |
-| `CACHE_SECONDS` | 同じ画像を使い回す秒数 |
+| `CACHE_SECONDS` | 同じ画像を使い回す秒数（既定60。ローカルで編集しながら見るなら `0`） |
 | `SHOW_CLAUDE` | `0` で Claude 使用量パネルを隠す |
 | `PUSH_TOKEN` | 設定すると使用量の送信にこのトークンが必要になる |
 | `CLAUDE_CODE_OAUTH_TOKEN` | `claude setup-token` のトークン。設定するとコンテナ内で使用量を定期取得する |
@@ -92,7 +100,7 @@ docker compose up -d --build
    claude setup-token
    ```
 
-2. NAS の `docker-compose.yml` と同じ場所に `.env` を作り、トークンを書きます。
+2. NAS の `docker-compose.yml` と同じ場所にある `.env` に、トークンを書きます。
 
    ```bash
    CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...

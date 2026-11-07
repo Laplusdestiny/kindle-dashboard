@@ -39,11 +39,11 @@ TOKEN = re.compile(
 
 
 def _dir() -> Path:
-    return Path(os.getenv("DATA_DIR", "data")) / "train"
+    return Path(os.getenv("DATA_DIR") or "data") / "train"
 
 
 def window_minutes() -> int:
-    return int(os.getenv("TRAIN_WINDOW_MINUTES", "30"))
+    return int(os.getenv("TRAIN_WINDOW_MINUTES") or "30")
 
 
 def parse_timetable(html: str) -> list[dict]:
@@ -81,7 +81,7 @@ def _write(path: Path, text: str) -> None:
 
 async def _timetable(client: httpx.AsyncClient, day: str) -> list[dict]:
     """day は "w"（平日）か "h"（土曜・休日）。古ければ取り直し、失敗したら手元の分を使う"""
-    url = os.getenv("TRAIN_TIMETABLE_URL", DEFAULT_URL).format(day=day)
+    url = (os.getenv("TRAIN_TIMETABLE_URL") or DEFAULT_URL).format(day=day)
     path = _dir() / (re.sub(r"[^\w-]", "_", Path(url).stem) + ".json")
     if not _fresh(path, TIMETABLE_MAX_AGE):
         try:
@@ -128,7 +128,7 @@ async def view(now: datetime | None = None) -> dict:
     now = (now or datetime.now()).replace(second=0, microsecond=0)
     span = window_minutes()
     out = {
-        "label": os.getenv("TRAIN_LABEL", "岡町 → 大阪梅田"),
+        "label": (os.getenv("TRAIN_LABEL") or "岡町 → 大阪梅田"),
         "span": span,
         "rows": [],
         "next": None,

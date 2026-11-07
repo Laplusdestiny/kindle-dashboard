@@ -28,7 +28,7 @@ WEEKDAYS = "月火水木金土日"
 
 
 def data_file() -> Path:
-    return Path(os.getenv("DATA_DIR", "data")) / "claude_usage.json"
+    return Path(os.getenv("DATA_DIR") or "data") / "claude_usage.json"
 
 
 def _parse_time(v) -> datetime | None:
@@ -132,7 +132,7 @@ def view(now: datetime | None = None) -> dict | None:
 CLAUDE_ARGS = [
     "-p", "ok",
     "--output-format", "stream-json", "--verbose",
-    "--model", os.getenv("CLAUDE_POLL_MODEL", "haiku"),
+    "--model", (os.getenv("CLAUDE_POLL_MODEL") or "haiku"),
     "--tools", "",
     "--system-prompt", "Reply with OK only.",
     "--strict-mcp-config",
@@ -147,7 +147,7 @@ def poll_enabled() -> bool:
 
 
 def poll_minutes() -> float:
-    return float(os.getenv("CLAUDE_POLL_MINUTES", "15"))
+    return float(os.getenv("CLAUDE_POLL_MINUTES") or "15")
 
 
 async def poll_once(timeout: float = 120) -> dict | None:

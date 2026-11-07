@@ -35,9 +35,9 @@ def weather_text(code: int | None) -> str:
 
 async def fetch_weather() -> dict:
     params = {
-        "latitude": os.getenv("LATITUDE", "34.6937"),
-        "longitude": os.getenv("LONGITUDE", "135.5023"),
-        "timezone": os.getenv("TZ", "Asia/Tokyo"),
+        "latitude": (os.getenv("LATITUDE") or "34.6937"),
+        "longitude": (os.getenv("LONGITUDE") or "135.5023"),
+        "timezone": (os.getenv("TZ") or "Asia/Tokyo"),
         "current": "temperature_2m,relative_humidity_2m,weather_code",
         "hourly": "temperature_2m,precipitation_probability,weather_code",
         "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
@@ -95,7 +95,7 @@ def shape_weather(raw: dict, now: datetime) -> dict:
 async def collect() -> dict:
     now = datetime.now()
     ctx = {
-        "place": os.getenv("PLACE_NAME", "大阪"),
+        "place": (os.getenv("PLACE_NAME") or "大阪"),
         "year": now.year,
         "month": now.month,
         "day": now.day,
@@ -103,9 +103,9 @@ async def collect() -> dict:
         "updated": now.strftime("%H:%M"),
         "weather": None,
         "error": None,
-        "show_claude": os.getenv("SHOW_CLAUDE", "1") != "0",
+        "show_claude": (os.getenv("SHOW_CLAUDE") or "1") != "0",
         "claude": claude.view(),
-        "show_train": os.getenv("SHOW_TRAIN", "1") != "0",
+        "show_train": (os.getenv("SHOW_TRAIN") or "1") != "0",
         "train": None,
     }
     if ctx["show_train"]:
