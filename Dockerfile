@@ -37,5 +37,8 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
 
+# タイムゾーンの既定。.env の TZ で上書きできる（重い層のキャッシュを壊さないよう最後に置く）
+ENV TZ=Asia/Tokyo
+
 EXPOSE 8080
 CMD ["kindle-dash-server", "--host", "0.0.0.0", "--port", "8080"]

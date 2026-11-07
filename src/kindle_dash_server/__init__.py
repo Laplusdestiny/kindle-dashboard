@@ -13,8 +13,8 @@ from pathlib import Path
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Kindle用ダッシュボード画像サーバー")
-    p.add_argument("--host", default=os.getenv("HOST", "0.0.0.0"))
-    p.add_argument("--port", type=int, default=int(os.getenv("PORT", "8080")))
+    p.add_argument("--host", default=(os.getenv("HOST") or "0.0.0.0"))
+    p.add_argument("--port", type=int, default=int(os.getenv("PORT") or "8080"))
     p.add_argument("--reload", action="store_true", help="コード・テンプレート変更で自動再起動（開発用）")
     args = p.parse_args()
 
