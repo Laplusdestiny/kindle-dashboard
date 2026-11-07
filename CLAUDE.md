@@ -21,12 +21,14 @@ docker compose build                                         # 本番と同じ�
 
 `src/kindle_dash_server/`（uv_build の src レイアウト。editable でインストールされる）
 
-- `data.py` … `collect()` がテンプレートに渡す値を集める（日付、Open-Meteo の天気、`claude.view()`）。
+- `data.py` … `collect()` がテンプレートに渡す値を集める（日付、Open-Meteo の天気、`claude.view()`、`train.view()`）。
 - `templates/dashboard.html` … Jinja2 テンプレート。`body.landscape` / `body.portrait` でレイアウトを切り替える。
 - `main.py` … FastAPI のアプリ本体。
   - 描画の流れ：HTML を Playwright の Chromium で撮影 → `to_kindle_png()` でグレースケール化 → 16階調に丸める →（必要なら回転）→ PNG。
   - エンドポイント：`/dash.png`（`CACHE_SECONDS` の間キャッシュ）、`/preview`（撮影前のHTML）、`POST /claude-usage`、`GET /claude-usage`、`/health`。
 - `claude.py` … Claude 使用量を受け取り（`normalize`）、`data/claude_usage.json` へ保存し、表示用に整形する（`view`）。
+- `train.py` … 阪急の駅時刻表ページを1日1回取得して解析し（`parse_timetable`）、`data/train/` に保存する。平日・土休日は内閣府の祝日CSVで判定し、`TRAIN_WINDOW_MINUTES` 分以内の発車を返す（`view`）。
+  - 電車パネルを出すと `body.with-train` が付き、天気などの余白を詰めて1画面に収める。縦置きでは Claude の見出しを隠している。
 - `push.py` … PC 側で動かす送信コマンド `kindle-dash-push-claude`。`--statusline`、`--oauth`、`--file` の3方式。
 - `__init__.py` … `kindle-dash-server` / `kindle-dash-snapshot` の入口。
 
