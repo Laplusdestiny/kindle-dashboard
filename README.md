@@ -87,6 +87,9 @@ Claude Code は statusline のコマンドに、`rate_limits`（5時間・週間
 ```
 
 statusline には `5h 23% · 週 62%` と表示されます。
+すでに別の statusline（例: `ccstatusline`）を使っている場合は `--passthrough ccstatusline` を付けます。
+同じ JSON をそのコマンドに渡し、表示はそちらに任せます。
+送信に失敗したときは60秒間送らないので、NAS が落ちていても statusline は遅くなりません。
 `rate_limits` が入るのは Pro/Max のサブスクリプションでログインしているときだけです。
 
 ### 方法B：cron で定期的に送る
