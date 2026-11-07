@@ -59,7 +59,7 @@ docker compose up -d --build
 | `LATITUDE` / `LONGITUDE` / `PLACE_NAME` | 天気を取る地点と表示名 |
 | `SCREEN_WIDTH` / `SCREEN_HEIGHT` | 画面の画素数（縦横どちらの順で書いてもよい） |
 | `ORIENTATION` | `landscape`（横・既定）か `portrait`（縦） |
-| `LANDSCAPE_ROTATE` | `0` なら横長PNGのまま出力。Kindle側で回転しないなら `90` か `270` にすると縦長PNGに回して出力（上下逆なら入れ替え） |
+| `LANDSCAPE_ROTATE` | 横長のデザインを回して、縦長PNG（1072×1448）で出力する（既定 `90`）。`90` は Kindle の下端（電源ボタン・USB）が左に来る向き。上下が逆なら `270`。`0` だと横長PNGのままになり、Kindle では右側が切れる |
 | `CACHE_SECONDS` | 同じ画像を使い回す秒数 |
 | `SHOW_CLAUDE` | `0` で Claude 使用量パネルを隠す |
 | `PUSH_TOKEN` | 設定すると使用量の送信にこのトークンが必要になる |

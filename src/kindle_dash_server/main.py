@@ -19,7 +19,8 @@ from .data import collect
 WIDTH = int(os.getenv("SCREEN_WIDTH", "1072"))
 HEIGHT = int(os.getenv("SCREEN_HEIGHT", "1448"))
 LANDSCAPE = os.getenv("ORIENTATION", "portrait") == "landscape"
-# 横置き時の回転角。0 なら横長画像のまま出力、90/270 なら縦長に回して出力
+# 横置き時の回転角（反時計回り）。0 なら横長画像のまま、90/270 なら縦長に回して出力。
+# Kindle の eips は画像を回転せずに縦長の画面へ描くので、実機では 90 か 270 にする
 ROTATE = int(os.getenv("LANDSCAPE_ROTATE", "0"))
 CACHE_SECONDS = int(os.getenv("CACHE_SECONDS", "60"))
 # 設定すると POST /claude-usage に Authorization: Bearer <値> が必要になる

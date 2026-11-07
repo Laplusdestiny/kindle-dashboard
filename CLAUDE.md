@@ -33,13 +33,14 @@ docker compose build                                         # 本番と同じ�
 - `__init__.py` … `kindle-dash-server` / `kindle-dash-snapshot` の入口。
 
 向きは `ORIENTATION` だけで決まる。`SCREEN_WIDTH` / `SCREEN_HEIGHT` はどちらの順で書いても同じ結果になる。
-`LANDSCAPE_ROTATE=0` で横長PNG（1448×1072）、`90` / `270` で縦長PNGに回して出力する。
+`LANDSCAPE_ROTATE=0` で横長PNG（1448×1072）、`90` / `270` で縦長PNGに回して出力する（Pillow の `rotate` なので反時計回り）。本番は `90`。
 
 ## 変更後の確認（必須）
 
 テンプレート・CSS・表示データを変えたら、次の両方で PNG を書き出して目で見る。
 
 1. **ローカルで横置き**（本番の設定）：`uv run --env-file .env kindle-dash-snapshot -o out/dash.png` を実行し、その PNG を読んで確認する。
+   - 本番は90°回した縦長PNGになる。レイアウトを見るときは `LANDSCAPE_ROTATE=0 uv run --env-file .env ...` で回さずに書き出すと見やすい。
 2. **Docker でも1回**：ローカルには Noto CJK フォントが無く、文字の幅や高さが違う。そのため、はみ出しは Docker 上でしか分からないことがある。
    - 再ビルドは不要。`-v $PWD/src:/srv/src:ro` で src をマウントすれば、そのまま反映される。
    - ポート 8080 はユーザーが自分でサーバーを起動して使っていることが多いので、確認用には別のポート（例 18081）を使う。
@@ -82,7 +83,8 @@ Claude パネルは、データがある状態で見る：`uv run kindle-dash-pu
 ## Kindle 側
 
 - Kindle 側の `fetch-dashboard.sh` が `http://<NAS>:8080/dash.png` を取りに来る。HTTPS は証明書が古くて失敗しやすいので、LAN 内は HTTP にする。
-- **未確認**：横長PNG（`LANDSCAPE_ROTATE=0`）が Kindle で正しく表示されるか。横倒しや見切れになる場合は `90` / `270` にする（上下が逆なら入れ替える）。確認できたらここを更新する。
+- 横長PNG（`LANDSCAPE_ROTATE=0`）は、Kindle では右側が切れる（確認済み）。`eips` は画像を回転せずに縦長の画面（1072×1448）へそのまま描き、GUIを止めているので自動回転も効かない。そのため本番は `LANDSCAPE_ROTATE=90` で縦長PNGに回して出力する。
+- **未確認**：`90` の向きで上下が合っているか。`90` は Kindle の下端（電源ボタン・USB）が左に来る向き。逆さまなら `270` にする。確認できたらここを更新する。
 
 ## 進め方のルール
 
