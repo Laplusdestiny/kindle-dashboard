@@ -1,0 +1,5 @@
+.venv
+.git
+out
+.env
+__pycache__
