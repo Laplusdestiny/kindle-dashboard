@@ -5,6 +5,9 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+    volumes:
+      # 受け取った Claude の使用量を保存（再起動しても消えない）
+      - ./data:/srv/data
     environment:
       TZ: Asia/Tokyo
       # 天気を取得する地点（初期値は大阪市）
@@ -15,8 +18,12 @@ services:
       SCREEN_WIDTH: "1072"
       SCREEN_HEIGHT: "1448"
       # portrait（縦）または landscape（横）
-      ORIENTATION: "portrait"
-      # 横置きで上下が逆になる場合は 90 と 270 を入れ替える
-      LANDSCAPE_ROTATE: "90"
+      ORIENTATION: "landscape"
+      # 0 なら横長PNG(1448x1072)のまま出力。Kindle側で回転しない場合は 90 か 270 で縦長PNGに回して出力
+      LANDSCAPE_ROTATE: "0"
       # 同じ画像を使い回す秒数（連続アクセス時の負荷軽減）
       CACHE_SECONDS: "60"
+      # Claude の使用量パネルを出すか（0 で非表示）
+      SHOW_CLAUDE: "1"
+      # 設定すると POST /claude-usage に同じ値のトークンが必要になる（PC側は --token か KINDLE_DASH_TOKEN）
+      PUSH_TOKEN: ""

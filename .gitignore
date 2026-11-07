@@ -11,4 +11,5 @@ wheels/
 
 # ローカル確認用の出力・設定
 out/
+data/
 .env

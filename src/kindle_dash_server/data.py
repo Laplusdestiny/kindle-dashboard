@@ -10,6 +10,8 @@ from datetime import datetime
 
 import httpx
 
+from . import claude
+
 # WMO天気コード → 日本語
 WEATHER_TEXT = {
     0: "快晴", 1: "晴れ", 2: "晴れ時々曇り", 3: "曇り",
@@ -101,6 +103,8 @@ async def collect() -> dict:
         "updated": now.strftime("%H:%M"),
         "weather": None,
         "error": None,
+        "show_claude": os.getenv("SHOW_CLAUDE", "1") != "0",
+        "claude": claude.view(),
     }
     try:
         ctx["weather"] = shape_weather(await fetch_weather(), now)

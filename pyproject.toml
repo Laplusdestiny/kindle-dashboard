@@ -19,6 +19,7 @@ dependencies = [
 [project.scripts]
 kindle-dash-server = "kindle_dash_server:main"
 kindle-dash-snapshot = "kindle_dash_server:snapshot"
+kindle-dash-push-claude = "kindle_dash_server.push:main"
 
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14.0"]
