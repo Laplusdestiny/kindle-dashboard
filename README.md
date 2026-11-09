@@ -69,8 +69,9 @@ docker compose up -d --build
 | `ORIENTATION` | `landscape`（横・既定）か `portrait`（縦） |
 | `LANDSCAPE_ROTATE` | 横長のデザインを回して、縦長PNG（1072×1448）で出力する（既定 `90`）。`90` は Kindle の下端（電源ボタン・USB）が左に来る向き。上下が逆なら `270`。`0` だと横長PNGのままになり、Kindle では右側が切れる |
 | `CACHE_SECONDS` | 同じ画像を使い回す秒数（既定60。ローカルで編集しながら見るなら `0`） |
-| `SHOW_CLAUDE` | `0` で Claude 使用量パネルを隠す |
-| `SHOW_CODEX` | `0` で Codex 使用量パネルを隠す |
+| `SHOW_CLAUDE` | `0` で Claude の行を隠す |
+| `SHOW_CODEX` | `0` で Codex の行を隠す |
+| `SHOW_AGY` | `0` で Antigravity の行を隠す |
 | `PUSH_TOKEN` | 設定すると使用量の送信にこのトークンが必要になる |
 | `CLAUDE_CODE_OAUTH_TOKEN` | `claude setup-token` のトークン。設定するとコンテナ内で使用量を定期取得する |
 | `CLAUDE_POLL_MINUTES` | 上の取得間隔（分、既定15）。`0` で取得しない |
@@ -232,6 +233,36 @@ Codex のターンが終わるたびに自動で送るには、`~/.codex/hooks.j
 ```
 
 動作確認用には `uv run kindle-dash-push-codex --file examples/codex_usage.json --url ...` も使えます。
+
+## Antigravity CLI（agy）の使用量を表示する
+
+使用量パネルに、Antigravity のクォータを系統ごとに出します（Gemini・Claude/GPT・Argon。5時間枠と週間枠）。
+
+agy には、使用量を返す公式のコマンドや API がありません。
+- `/usage` は対話画面だけです。
+- `agy -p` の出力やフックにも、クォータは入りません。
+
+公式に読めるのは、statusline のコマンドに渡される JSON の `quota` だけです。
+そこで、PC の agy の statusline から `kindle-dash-push-agy` で `POST /agy-usage` に送ります。コンテナ内では取得できません。
+送るのは `quota` とプラン名（`plan_tier`）だけで、statusline JSON に入っているメールアドレスなどは送りません。
+
+`~/.gemini/antigravity-cli/settings.json` に次を追加します。
+`stack_with_default: true` にすると、agy の標準の statusline の下に「Gemini 5h 99% · Claude/GPT 5h 100%」が並びます。
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "uv run --quiet --frozen --project /path/to/kindle-dash-server kindle-dash-push-agy --statusline --url http://<NASのIP>:8080",
+    "stack_with_default": true
+  }
+}
+```
+
+- 自分の statusline コマンドがすでにある場合は、`--passthrough <そのコマンド>` を付けると、表示はそちらに任せます。
+- agy を使っている間（状態が変わるたび）だけ送られます。agy を起動していない間は、最後に送った値のまま表示します。
+- 送信は軽く保っています。同じ内容は5分送らず、失敗した後の60秒は送らず、タイムアウトは1.5秒です。
+- 動作確認用には `uv run kindle-dash-push-agy --file examples/agy_usage.json --url ...` が使えます。
 
 ## 電車の発車時刻
 

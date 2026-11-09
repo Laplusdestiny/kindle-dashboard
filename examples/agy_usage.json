@@ -1,0 +1,30 @@
+{
+  "plan_tier": "Google AI Pro",
+  "quota": {
+    "3p-5h": {
+      "remaining_fraction": 0.35,
+      "reset_time": "2027-01-01T05:24:26Z",
+      "reset_in_seconds": 3600
+    },
+    "3p-weekly": {
+      "remaining_fraction": 0.12,
+      "reset_time": "2027-01-06T15:24:26Z",
+      "reset_in_seconds": 3600
+    },
+    "gemini-5h": {
+      "remaining_fraction": 0.62,
+      "reset_time": "2027-01-01T05:24:26Z",
+      "reset_in_seconds": 3600
+    },
+    "gemini-argon-wtu-weekly": {
+      "remaining_fraction": 0.94,
+      "reset_time": "2027-01-06T15:24:26Z",
+      "reset_in_seconds": 3600
+    },
+    "gemini-weekly": {
+      "remaining_fraction": 0.81,
+      "reset_time": "2027-01-06T15:24:26Z",
+      "reset_in_seconds": 3600
+    }
+  }
+}

@@ -25,7 +25,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from .claude import _parse_time, build_view, read_json, write_json
+from .claude import _parse_time, read_json, write_json
 
 log = logging.getLogger(__name__)
 
@@ -64,6 +64,7 @@ def normalize(payload: dict, source: str = "push") -> dict:
         reset = _parse_time(w.get("resetsAt"))
         windows[key] = {
             "label": window_label(w.get("windowDurationMins")),
+            "minutes": w.get("windowDurationMins"),
             "used": float(w["usedPercent"]),
             "resets_at": reset.isoformat() if reset else None,
         }
@@ -85,14 +86,6 @@ def save(payload: dict, source: str = "push") -> dict:
 
 def load() -> dict | None:
     return read_json(data_file())
-
-
-def view(now: datetime | None = None) -> dict | None:
-    data = load()
-    if not data:
-        return None
-    labels = {k: data["windows"][k]["label"] for k in KEYS if k in data["windows"]}
-    return build_view(data, labels, now)
 
 
 # ---- codex app-server から読む（PC 側の送信コマンドでも使う）----

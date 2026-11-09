@@ -13,7 +13,7 @@ from jinja2 import Environment, FileSystemLoader
 from PIL import Image
 from playwright.async_api import Browser, async_playwright
 
-from . import claude, codex, kindle
+from . import agy, claude, codex, kindle
 from .data import collect
 
 WIDTH = int(os.getenv("SCREEN_WIDTH") or "1072")
@@ -154,6 +154,24 @@ async def push_codex_usage(request: Request, authorization: str | None = Header(
 @app.get("/codex-usage")
 async def get_codex_usage():
     return codex.load() or {}
+
+
+@app.post("/agy-usage")
+async def push_agy_usage(request: Request, authorization: str | None = Header(None)):
+    """PC から Antigravity CLI の使用量を受け取る（kindle-dash-push-agy が送ってくる）"""
+    if PUSH_TOKEN and authorization != f"Bearer {PUSH_TOKEN}":
+        raise HTTPException(401, "invalid token")
+    try:
+        data = agy.save(await request.json())
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    state["png"] = None
+    return data
+
+
+@app.get("/agy-usage")
+async def get_agy_usage():
+    return agy.load() or {}
 
 
 @app.get("/health")
