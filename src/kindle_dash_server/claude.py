@@ -1,14 +1,8 @@
-"""Claude のプラン使用量（5時間枠・週間枠）を集めて保存し、表示用に整える。
+"""Claude のプラン使用量（5時間枠・週間枠）を、コンテナ内の Claude Code で定期取得して保存する。
 
-使用量の入り方は2通り（どちらも data/claude_usage.json に保存し、新しい方が勝つ）:
-  1. PC から POST /claude-usage で送ってもらう（kindle-dash-push-claude）
-  2. コンテナ内の Claude Code を CLAUDE_CODE_OAUTH_TOKEN で定期実行し、
-     stream-json に出る rate_limit_event から読む（poll_loop）
-
-POST で受け付ける JSON は次のどれでもよい:
-  - Claude Code の statusline に渡される JSON 全体（rate_limits を含む）
-  - その rate_limits 部分だけ
-  - /api/oauth/usage の応答（five_hour.utilization など）
+CLAUDE_CODE_OAUTH_TOKEN（claude setup-token の長期トークン）で `claude -p` を最小構成で動かし、
+stream-json に出る rate_limit_event から読む（poll_loop）。結果は data/claude_usage.json に保存する。
+保存前に statusline と同じ形（rate_limits.five_hour / seven_day、0〜100%）にそろえてから normalize する。
 """
 from __future__ import annotations
 
@@ -55,7 +49,7 @@ def from_rate_limit_event(event: dict) -> dict | None:
     return {"rate_limits": out} if out else None
 
 
-def normalize(payload: dict, source: str = "push") -> dict:
+def normalize(payload: dict, source: str = "claude-code") -> dict:
     src = payload.get("rate_limits", payload) if isinstance(payload, dict) else None
     if not isinstance(src, dict):
         raise ValueError("JSON オブジェクトではありません")
@@ -88,7 +82,7 @@ def read_json(path: Path) -> dict | None:
         return None
 
 
-def save(payload: dict, source: str = "push") -> dict:
+def save(payload: dict, source: str = "claude-code") -> dict:
     data = normalize(payload, source)
     write_json(data_file(), data)
     return data

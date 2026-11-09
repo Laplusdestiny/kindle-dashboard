@@ -1,17 +1,11 @@
-"""Codex（ChatGPT プラン）の使用量を集めて保存し、表示用に整える。
+"""Codex（ChatGPT プラン）の使用量を、コンテナ内の Codex で定期取得して保存する。
 
-使用量は `codex app-server` の account/rateLimits/read（Codex 公式のプロトコル。トークンは消費しない）で読む。
-入り方は2通り（どちらも data/codex_usage.json に保存し、新しい方が勝つ）:
-  1. コンテナ内の Codex で定期取得する（poll_loop）。ログインは次のどちらか:
-     - CODEX_ACCESS_TOKEN（ChatGPT の Business / Enterprise ワークスペースで発行するアクセストークン）。
-       起動時に `codex login --with-access-token` で CODEX_HOME に保存してから使う
-     - 個人プランは、コンテナ内で一度 `codex login --device-auth` を実行する。
-       CODEX_HOME（Docker では ./data/codex）に保存され、PC とは別のログインになる
-  2. PC から POST /codex-usage で送ってもらう（kindle-dash-push-codex）
-
-POST で受け付ける JSON は次のどれでもよい:
-  - account/rateLimits/read の result 全体（rateLimits を含む）
-  - その rateLimits 部分だけ（primary / secondary）
+使用量は `codex app-server` の account/rateLimits/read（Codex 公式のプロトコル。トークンは消費しない）で読み、
+data/codex_usage.json に保存する（poll_loop）。ログインは次のどちらか:
+  - CODEX_ACCESS_TOKEN（ChatGPT の Business / Enterprise ワークスペースで発行するアクセストークン）。
+    起動時に `codex login --with-access-token` で CODEX_HOME に保存してから使う
+  - 個人プランは、コンテナ内で一度 `codex login --device-auth` を実行する。
+    CODEX_HOME（Docker では ./data/codex）に保存され、PC とは別のログインになる
 """
 from __future__ import annotations
 
@@ -50,7 +44,7 @@ def window_label(minutes) -> str:
     return f"{minutes}分"
 
 
-def normalize(payload: dict, source: str = "push") -> dict:
+def normalize(payload: dict, source: str = "codex") -> dict:
     if not isinstance(payload, dict):
         raise ValueError("JSON オブジェクトではありません")
     src = payload.get("rateLimits", payload)
@@ -78,7 +72,7 @@ def normalize(payload: dict, source: str = "push") -> dict:
     }
 
 
-def save(payload: dict, source: str = "push") -> dict:
+def save(payload: dict, source: str = "codex") -> dict:
     data = normalize(payload, source)
     write_json(data_file(), data)
     return data
@@ -88,7 +82,7 @@ def load() -> dict | None:
     return read_json(data_file())
 
 
-# ---- codex app-server から読む（PC 側の送信コマンドでも使う）----
+# ---- codex app-server から読む ----
 
 def fetch_rate_limits(timeout: float = 20) -> dict:
     """codex app-server と JSON-RPC（1行1メッセージ）で話して rateLimits を返す。
