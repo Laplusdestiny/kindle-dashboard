@@ -47,6 +47,22 @@ RUN case "${TARGETARCH:-amd64}" in \
 # Codex のログイン情報の置き場所。./data をマウントしているので再起動しても残る
 ENV CODEX_HOME=/srv/data/codex
 
+# Antigravity CLI（agy。使用量の取得用）。公式インストーラと同じ配布元から、ビルド番号まで固定して入れる。
+# 最新のビルド番号は https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_amd64.json の url で分かる
+ARG AGY_BUILD=1.5.3-6604829099950080
+RUN case "${TARGETARCH:-amd64}" in \
+      amd64) path=linux-x64/cli_linux_x64 ;; \
+      arm64) path=linux-arm/cli_linux_arm64 ;; \
+      *) echo "未対応のアーキテクチャ: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+ && curl -fsSL "https://storage.googleapis.com/antigravity-public/antigravity-cli/${AGY_BUILD}/${path}.tar.gz" \
+    | tar -xz -C /usr/local/bin antigravity \
+ && mv /usr/local/bin/antigravity /usr/local/bin/agy \
+ && agy --version
+# agy のログイン情報・設定は ~/.gemini に入る。./data/agy に向けて、再起動しても残るようにする
+ENV AGY_HOME_DIR=/srv/data/agy
+RUN ln -s /srv/data/agy /root/.gemini
+
 # 2) アプリ本体
 COPY README.md ./
 COPY src ./src

@@ -1,30 +1,62 @@
 {
-  "plan_tier": "Google AI Pro",
-  "quota": {
-    "3p-5h": {
-      "remaining_fraction": 0.35,
-      "reset_time": "2027-01-01T05:24:26Z",
-      "reset_in_seconds": 3600
-    },
-    "3p-weekly": {
-      "remaining_fraction": 0.12,
-      "reset_time": "2027-01-06T15:24:26Z",
-      "reset_in_seconds": 3600
-    },
-    "gemini-5h": {
-      "remaining_fraction": 0.62,
-      "reset_time": "2027-01-01T05:24:26Z",
-      "reset_in_seconds": 3600
-    },
-    "gemini-argon-wtu-weekly": {
-      "remaining_fraction": 0.94,
-      "reset_time": "2027-01-06T15:24:26Z",
-      "reset_in_seconds": 3600
-    },
-    "gemini-weekly": {
-      "remaining_fraction": 0.81,
-      "reset_time": "2027-01-06T15:24:26Z",
-      "reset_in_seconds": 3600
+  "conversation_id": "",
+  "status": "SUCCESS",
+  "response": "",
+  "command": {
+    "name": "usage",
+    "data": {
+      "groups": [
+        {
+          "name": "Gemini Models",
+          "buckets": [
+            {
+              "id": "gemini-weekly",
+              "name": "Weekly Limit Remaining",
+              "window": "weekly",
+              "remaining_fraction": 0.81,
+              "reset_time": "2027-01-06T15:24:26Z"
+            },
+            {
+              "id": "gemini-5h",
+              "name": "Five Hour Limit Remaining",
+              "window": "5h",
+              "remaining_fraction": 0.62,
+              "reset_time": "2027-01-01T05:24:26Z"
+            }
+          ]
+        },
+        {
+          "name": "Claude and GPT models",
+          "buckets": [
+            {
+              "id": "3p-weekly",
+              "name": "Weekly Limit Remaining",
+              "window": "weekly",
+              "remaining_fraction": 0.12,
+              "reset_time": "2027-01-06T15:24:26Z"
+            },
+            {
+              "id": "3p-5h",
+              "name": "Five Hour Limit Remaining",
+              "window": "5h",
+              "remaining_fraction": 0.35,
+              "reset_time": "2027-01-01T05:24:26Z"
+            }
+          ]
+        },
+        {
+          "name": "Gemini 4 Argon",
+          "buckets": [
+            {
+              "id": "gemini-argon-wtu-weekly",
+              "name": "Gemini 4 Argon Weekly Limit",
+              "window": "weekly",
+              "remaining_fraction": 0.94,
+              "reset_time": "2027-01-06T15:24:26Z"
+            }
+          ]
+        }
+      ]
     }
   }
 }

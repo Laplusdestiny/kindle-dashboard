@@ -61,14 +61,14 @@ def rows(now: datetime | None = None) -> list[dict]:
             ws = [(w, CLAUDE_MINUTES.get(k)) for k, w in data["windows"].items()]
             out.append(_row("Claude", _received(data, now), ws, now))
         else:
-            out.append(_row("Claude", "未受信", [], now))
+            out.append(_row("Claude", "未取得", [], now))
     if show("SHOW_CODEX"):
         data = codex.load()
         if data:
             ws = [(w, w.get("minutes")) for w in data["windows"].values()]
             out.append(_row("Codex", _received(data, now), ws, now))
         else:
-            out.append(_row("Codex", "未受信", [], now))
+            out.append(_row("Codex", "未取得", [], now))
     if show("SHOW_AGY"):
         data = agy.load()
         groups = agy.families(data)
@@ -80,5 +80,5 @@ def rows(now: datetime | None = None) -> list[dict]:
                 ws = [(b, b.get("minutes")) for b in buckets.values()]
                 out.append(_row(name, "", ws, now))
         else:
-            out.append(_row("Antigravity", "未受信", [], now))
+            out.append(_row("Antigravity", "未取得", [], now))
     return out

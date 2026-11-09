@@ -7,7 +7,7 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException, Request, Response
+from fastapi import FastAPI, Response
 from fastapi.responses import HTMLResponse
 from jinja2 import Environment, FileSystemLoader
 from PIL import Image
@@ -23,8 +23,6 @@ LANDSCAPE = (os.getenv("ORIENTATION") or "landscape") == "landscape"
 # Kindle の eips は画像を回転せずに縦長の画面へ描くので、実機では 90 か 270 にする
 ROTATE = int(os.getenv("LANDSCAPE_ROTATE") or "90")
 CACHE_SECONDS = int(os.getenv("CACHE_SECONDS") or "60")
-# 設定すると POST /claude-usage に Authorization: Bearer <値> が必要になる
-PUSH_TOKEN = os.getenv("PUSH_TOKEN") or None
 
 env = Environment(loader=FileSystemLoader(Path(__file__).parent / "templates"), autoescape=True)
 
@@ -47,6 +45,8 @@ async def lifespan(app: FastAPI):
         pollers.append(asyncio.create_task(claude.poll_loop(on_update=invalidate)))
     if codex.poll_enabled():
         pollers.append(asyncio.create_task(codex.poll_loop(on_update=invalidate)))
+    if agy.poll_enabled():
+        pollers.append(asyncio.create_task(agy.poll_loop(on_update=invalidate)))
     yield
     for t in pollers:
         t.cancel()
@@ -120,53 +120,14 @@ async def preview():
     return await render_html()
 
 
-@app.post("/claude-usage")
-async def push_claude_usage(request: Request, authorization: str | None = Header(None)):
-    """PC から Claude の使用量を受け取る（kindle-dash-push-claude が送ってくる）"""
-    if PUSH_TOKEN and authorization != f"Bearer {PUSH_TOKEN}":
-        raise HTTPException(401, "invalid token")
-    try:
-        data = claude.save(await request.json())
-    except ValueError as e:  # JSON不正・必要な項目なし
-        raise HTTPException(422, str(e)) from e
-    state["png"] = None  # 次のアクセスで描き直す
-    return data
-
-
 @app.get("/claude-usage")
 async def get_claude_usage():
     return claude.load() or {}
 
 
-@app.post("/codex-usage")
-async def push_codex_usage(request: Request, authorization: str | None = Header(None)):
-    """PC から Codex の使用量を受け取る（kindle-dash-push-codex が送ってくる）"""
-    if PUSH_TOKEN and authorization != f"Bearer {PUSH_TOKEN}":
-        raise HTTPException(401, "invalid token")
-    try:
-        data = codex.save(await request.json())
-    except ValueError as e:
-        raise HTTPException(422, str(e)) from e
-    state["png"] = None
-    return data
-
-
 @app.get("/codex-usage")
 async def get_codex_usage():
     return codex.load() or {}
-
-
-@app.post("/agy-usage")
-async def push_agy_usage(request: Request, authorization: str | None = Header(None)):
-    """PC から Antigravity CLI の使用量を受け取る（kindle-dash-push-agy が送ってくる）"""
-    if PUSH_TOKEN and authorization != f"Bearer {PUSH_TOKEN}":
-        raise HTTPException(401, "invalid token")
-    try:
-        data = agy.save(await request.json())
-    except ValueError as e:
-        raise HTTPException(422, str(e)) from e
-    state["png"] = None
-    return data
 
 
 @app.get("/agy-usage")

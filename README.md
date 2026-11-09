@@ -72,23 +72,32 @@ docker compose up -d --build
 | `SHOW_CLAUDE` | `0` で Claude の行を隠す |
 | `SHOW_CODEX` | `0` で Codex の行を隠す |
 | `SHOW_AGY` | `0` で Antigravity の行を隠す |
-| `PUSH_TOKEN` | 設定すると使用量の送信にこのトークンが必要になる |
 | `CLAUDE_CODE_OAUTH_TOKEN` | `claude setup-token` のトークン。設定するとコンテナ内で使用量を定期取得する |
 | `CLAUDE_POLL_MINUTES` | 上の取得間隔（分、既定15）。`0` で取得しない |
 | `CODEX_ACCESS_TOKEN` | Codex のアクセストークン（Business / Enterprise のみ）。個人プランは `codex login --device-auth` でログインする |
 | `CODEX_POLL_MINUTES` | コンテナ内で Codex 使用量を取得する間隔（分、既定15）。`0` で取得しない |
-| `DATA_DIR` | 受け取った使用量と、取得した時刻表の保存先（既定 `data/`、Docker では `./data` をマウント） |
+| `AGY_POLL_MINUTES` | コンテナ内で Antigravity 使用量を取得する間隔（分、既定15）。`0` で取得しない |
+| `DATA_DIR` | 取得した使用量・ログイン情報・時刻表の保存先（既定 `data/`、Docker では `./data` をマウント） |
 | `SHOW_TRAIN` | `0` で電車の発車時刻パネルを隠す |
 | `TRAIN_LABEL` | パネルの見出し（既定 `岡町 → 大阪梅田`） |
 | `TRAIN_TIMETABLE_URL` | 阪急の駅時刻表ページのURL。`{day}` が `w`（平日）/ `h`（土曜・休日）に置き換わる（既定は岡町駅 宝塚線 大阪梅田方面） |
 | `TRAIN_WINDOW_MINUTES` | 何分先までの発車を出すか（既定30） |
 
-## Claude の使用量を表示する
+## AI の使用量を表示する（Claude・Codex・Antigravity）
 
-使用量の取り方は次の3通りです。どれで取った値も `data/claude_usage.json` に保存され、新しい値が表示に使われます。
-リセット時刻を過ぎた枠は「リセット済み」（残り100%）と表示されます。
+左下の表に、各サービスの残り（5時間枠・週間枠）を出します。
+- 取得はすべてコンテナ内で行います。PC から送る必要はありません。
+- 取得した値は `data/claude_usage.json` / `data/codex_usage.json` / `data/agy_usage.json` に保存されます。
+- リセット時刻を過ぎた枠は「リセット済」（残り100%）と表示します。
+- ログインしていないサービスは、`docker compose logs` に案内が1回出ます。
 
-### 方法A：コンテナ内の Claude Code で取得する（NAS だけで完結）
+| サービス | 取り方 | ログイン | 取得間隔 |
+|---|---|---|---|
+| Claude | `claude -p` を最小構成で1回動かし、出力の `rate_limit_event` を読む（約900トークン） | `.env` の `CLAUDE_CODE_OAUTH_TOKEN` | `CLAUDE_POLL_MINUTES` |
+| Codex | `codex app-server` の `account/rateLimits/read`（トークン消費なし） | コンテナ内で `codex login --device-auth`（個人プラン）か `.env` の `CODEX_ACCESS_TOKEN` | `CODEX_POLL_MINUTES` |
+| Antigravity | `agy -p /usage --output-format json`（トークン消費なし） | コンテナ内で一度ログイン | `AGY_POLL_MINUTES` |
+
+### Claude
 
 イメージには Claude Code（ネイティブ版、バージョン固定）が入っています。
 `CLAUDE_CODE_OAUTH_TOKEN` を設定すると、サーバーが起動直後と `CLAUDE_POLL_MINUTES`（既定15分）ごとに次のことをします。
@@ -115,62 +124,10 @@ docker compose up -d --build
 > トークンが漏れると、あなたのプランで推論ができてしまいます。`.env` は git に入れないでください（`.gitignore` 済み）。
 > このトークンでは使用量API（`/api/oauth/usage`）は呼べません（権限 `user:profile` が無いため）。そのため Claude Code の出力から読む方式にしています。
 
-### 方法B：PC の statusline から自動で送る
-
-Claude Code は statusline のコマンドに、`rate_limits`（5時間・週間の使用率とリセット時刻）を含む JSON を渡します。
-`~/.claude/settings.json` に次を追加すると、Claude Code を使うたびに送信されます。
-内容が同じなら、送信は5分に1回までに抑えています。
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "uv run --quiet --project /home/sumito/git/kindle-dash-server kindle-dash-push-claude --statusline --url http://<NASのIP>:8080"
-  }
-}
-```
-
-statusline には `5h 23% · 週 62%` と表示されます。
-すでに別の statusline（例: `ccstatusline`）を使っている場合は `--passthrough ccstatusline` を付けます。
-同じ JSON をそのコマンドに渡し、表示はそちらに任せます。
-送信に失敗したときは60秒間送らないので、NAS が落ちていても statusline は遅くなりません。
-`rate_limits` が入るのは Pro/Max のサブスクリプションでログインしているときだけです。
-
-### 方法C：PC の cron で定期的に送る
-
-Claude Code のログイン情報（`~/.claude/.credentials.json`）のアクセストークンで使用量APIを叩き、その結果を送ります。
-トークンの更新は Claude Code 本体に任せ、このスクリプトは読むだけです。
-
-```bash
-uv run --project /home/sumito/git/kindle-dash-server kindle-dash-push-claude --oauth --url http://<NASのIP>:8080
-```
-
-> 使用量API（`/api/oauth/usage`）は非公開のAPIなので、仕様が変わる可能性があります。
-> `claude setup-token` で作る長期トークンには必要な権限（`user:profile`）が無いため、この方法では使えません。
-
-### 動作確認
-
-```bash
-uv run kindle-dash-push-claude --file examples/claude_usage.json --url http://localhost:8080
-curl http://localhost:8080/claude-usage
-```
-
-`PUSH_TOKEN` を設定した場合は、PC 側で `--token <値>` を付けるか、環境変数 `KINDLE_DASH_TOKEN` を設定します。
-
-## Codex の使用量を表示する
-
-ChatGPT プランでの Codex の残り（5時間枠・週間枠など）を、Claude の下に出します。
-使用量は `codex app-server` の `account/rateLimits/read`（Codex 公式のプロトコル）で読みます。
-- トークンは消費しません。
-- アカウントIDなどは保存せず、`rateLimits` 部分だけを使います。
-
-枠の名前は `windowDurationMins` から作ります（300分→5時間、10080分→週間、43200分→30日）。
-プランによっては枠が1つだけのこともあります（Free プランは30日枠のみ）。
-
-### 方法A：コンテナ内の Codex で取得する（NAS だけで完結）
+### Codex
 
 イメージには Codex CLI が入っています（Dockerfile の `CODEX_VERSION` で固定）。
-ログインしていれば、サーバーが起動直後と `CODEX_POLL_MINUTES`（既定15分）ごとに使用量を読みます。
+使用量は `codex app-server` の `account/rateLimits/read`（Codex 公式のプロトコル）で読みます。トークンは消費せず、アカウントIDなどは保存しません。
 ログイン情報は `CODEX_HOME`（`/srv/data/codex`、つまり NAS の `./data/codex`）に保存されるので、再起動しても残ります。
 
 ログインのしかたは、プランによって次のどちらかです。
@@ -183,7 +140,6 @@ ChatGPT プランでの Codex の残り（5時間枠・週間枠など）を、C
 
   表示されたURLをPCのブラウザで開き、コードを入力します。
   これは NAS 専用の別のログインなので、PC の Codex のログインには影響しません。
-  - Codex は自動でトークンを更新します。
   - ログアウトしたいときは、`docker compose exec kindle-dash codex logout` を実行します。
   - PC の `~/.codex/auth.json` を NAS にコピーするのはやめてください。更新用のトークンを共有することになり、どちらかが更新すると、もう一方のログインが切れるおそれがあります。
 
@@ -193,76 +149,47 @@ ChatGPT プランでの Codex の残り（5時間枠・週間枠など）を、C
   CODEX_ACCESS_TOKEN=...
   ```
 
-  サーバーは起動時に `codex login --with-access-token` でログインしてから取得します。
-  app-server はこの環境変数を直接は読まないため、このようにしています。
+  サーバーは起動時に `codex login --with-access-token` でログインしてから取得します（app-server はこの環境変数を直接は読まないため）。
 
-ログインできていなければ、`docker compose logs` に案内が1回出ます。
-取得できると `Codex 使用量を更新` と出ます。
+枠の名前は `windowDurationMins` から作ります。プランによっては枠が1つだけのこともあります（Free プランは30日枠のみで、「週間」の列に「30日枠」と添えて出します）。
 
-### 方法B：PC から送る
+### Antigravity CLI（agy）
 
-PC で `kindle-dash-push-codex` を動かすと、PC の Codex のログインで読んで、`POST /codex-usage` に送ります。
+イメージには agy が入っています。公式インストーラと同じ配布元から、Dockerfile の `AGY_BUILD` でビルド番号まで固定しています。
+`agy -p /usage --output-format json` を実行すると、モデルを呼ばずに（トークン 0 で）クォータが JSON で返ります。それを起動直後と `AGY_POLL_MINUTES`（既定15分）ごとに読みます。
+表には系統ごと（Gemini・Claude/GPT・Argon）に、5時間枠と週間枠を出します。
+
+ログインはコンテナ内で一度だけ行います。`~/.gemini` を `./data/agy` に向けているので、再起動しても残ります。
 
 ```bash
-uv run kindle-dash-push-codex --url http://<NASのIP>:8080
+docker compose exec -it kindle-dash agy -p /usage
 ```
 
-Codex のターンが終わるたびに自動で送るには、`~/.codex/hooks.json` の `Stop` フックに登録します。
-`--hook` を付けると次のように動き、Codex を止めないようにしています。
-- 何も出力しない。
-- 失敗しても終了コード 0 で終わる。
-- 同じ内容は5分送らない。
-- 失敗した後の60秒は送らない。
+1. 表示されたURLをPCのブラウザで開き、Google アカウントでログインします。
+2. 表示されたコードをターミナルに貼ります。
+3. 使用量が表示されれば成功です。
 
-```json
-{
-  "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "uv run --quiet --frozen --project /path/to/kindle-dash-server kindle-dash-push-codex --hook --url http://<NASのIP>:8080",
-            "timeout": 15
-          }
-        ]
-      }
-    ]
-  }
-}
+これも NAS 専用の別のログインです。
+
+- 未ログインのまま `agy -p` を実行すると、ログインを60秒待ってから失敗します。そのため、ログインするまでは取得のたびに60秒かかりますが、画像の描画は止まりません。
+- agy は通常の実行中に自分で更新する仕組みを持っています（止める設定は公開されていません）。イメージを作り直すと、`AGY_BUILD` の版に戻ります。
+
+### 表示の確認（ローカル）
+
+データがある状態の見た目は、サンプルを `data/` に保存してから描画すると確認できます。
+
+```bash
+uv run python -c "
+import json
+from kindle_dash_server import agy, claude, codex
+claude.save(json.load(open('examples/claude_usage.json')))
+codex.save(json.load(open('examples/codex_usage.json')))
+agy.save(json.load(open('examples/agy_usage.json')))
+"
+LANDSCAPE_ROTATE=0 uv run --env-file .env kindle-dash-snapshot -o out/dash.png
 ```
 
-動作確認用には `uv run kindle-dash-push-codex --file examples/codex_usage.json --url ...` も使えます。
-
-## Antigravity CLI（agy）の使用量を表示する
-
-使用量パネルに、Antigravity のクォータを系統ごとに出します（Gemini・Claude/GPT・Argon。5時間枠と週間枠）。
-
-agy には、使用量を返す公式のコマンドや API がありません。
-- `/usage` は対話画面だけです。
-- `agy -p` の出力やフックにも、クォータは入りません。
-
-公式に読めるのは、statusline のコマンドに渡される JSON の `quota` だけです。
-そこで、PC の agy の statusline から `kindle-dash-push-agy` で `POST /agy-usage` に送ります。コンテナ内では取得できません。
-送るのは `quota` とプラン名（`plan_tier`）だけで、statusline JSON に入っているメールアドレスなどは送りません。
-
-`~/.gemini/antigravity-cli/settings.json` に次を追加します。
-`stack_with_default: true` にすると、agy の標準の statusline の下に「Gemini 5h 99% · Claude/GPT 5h 100%」が並びます。
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "uv run --quiet --frozen --project /path/to/kindle-dash-server kindle-dash-push-agy --statusline --url http://<NASのIP>:8080",
-    "stack_with_default": true
-  }
-}
-```
-
-- 自分の statusline コマンドがすでにある場合は、`--passthrough <そのコマンド>` を付けると、表示はそちらに任せます。
-- agy を使っている間（状態が変わるたび）だけ送られます。agy を起動していない間は、最後に送った値のまま表示します。
-- 送信は軽く保っています。同じ内容は5分送らず、失敗した後の60秒は送らず、タイムアウトは1.5秒です。
-- 動作確認用には `uv run kindle-dash-push-agy --file examples/agy_usage.json --url ...` が使えます。
+保存されている内容は `GET /claude-usage`・`/codex-usage`・`/agy-usage` でも見られます。
 
 ## 電車の発車時刻
 
