@@ -27,15 +27,19 @@ docker compose build                                         # 本番と同じ�
 - `templates/dashboard.html` … Jinja2 テンプレート。`body.landscape` / `body.portrait` でレイアウトを切り替える。
 - `main.py` … FastAPI のアプリ本体。
   - 描画の流れ：HTML を Playwright の Chromium で撮影 → `to_kindle_png()` でグレースケール化 → 16階調に丸める →（必要なら回転）→ PNG。
-  - エンドポイント：`/dash.png`（`CACHE_SECONDS` の間キャッシュ。`?battery=82` で Kindle の電池残量も受け取る）、`/preview`（撮影前のHTML）、`POST` / `GET /claude-usage`、`POST` / `GET /codex-usage`、`/health`。
+  - エンドポイント：`/dash.png`（`CACHE_SECONDS` の間キャッシュ。`?battery=82` で Kindle の電池残量も受け取る）、`/preview`（撮影前のHTML）、`POST` / `GET /claude-usage`、`POST` / `GET /codex-usage`、`POST` / `GET /agy-usage`、`/health`。
 - `claude.py` … Claude 使用量を受け取り（`normalize`）、`data/claude_usage.json` へ保存し、表示用に整形する（`view`）。
 - `train.py` … 阪急の駅時刻表ページを1日1回取得して解析し（`parse_timetable`）、`data/train/` に保存する。平日・土休日は内閣府の祝日CSVで判定し、`TRAIN_WINDOW_MINUTES` 分以内の発車を返す（`view`）。
-  - 電車パネルを出すと `body.with-train` が付き、天気などの余白を詰めて1画面に収める。縦置きでは、使用量の見出しと3日分の予報を隠し、行のラベルを「Claude 5時間」のようにしている。
-  - Claude と Codex を両方出すと `body.with-codex` が付き、横置きでは日付を少し小さくして左の列に収める。
-- `codex.py` … Codex 使用量を `codex app-server` で読み（`fetch_rate_limits`。コンテナ内の定期取得 `poll_loop` と PC 側の送信コマンドで共用）、受け取った値（`normalize`）を `data/codex_usage.json` へ保存する。保存・表示は `claude.py` の `write_json` / `read_json` / `build_view` を共用している。
+  - 電車パネルを出すと `body.with-train` が付き、天気などの余白を詰めて1画面に収める。縦置きでは、3時間ごとの予報と3日分の予報を隠している。
+  - AI の使用量は、1行1サービスの表（`.usage`）にしている。列は「5時間」「週間」。Antigravity は系統（Gemini・Claude/GPT・Argon）ごとに行を分け、見出し行を1つ置く。サービスや枠が増えると行が増えるので、追加したら横置き・縦置きの両方で収まるかを見る。
+- `codex.py` … Codex 使用量を `codex app-server` で読み（`fetch_rate_limits`。コンテナ内の定期取得 `poll_loop` と PC 側の送信コマンドで共用）、受け取った値（`normalize`）を `data/codex_usage.json` へ保存する。
+- `agy.py` … Antigravity CLI の使用量（statusline JSON の `quota`）を受け取り、`data/agy_usage.json` へ保存する。
+- `usage.py` … Claude・Codex・Antigravity の保存データから、使用量パネルの表（`rows`）を作る。どの枠を「5時間」「週間」のどちらの列に入れるかは、枠の長さ（分）で決める。
+  - 保存・読み込みは `claude.py` の `write_json` / `read_json` を共用している。
 - `kindle.py` … `/dash.png?battery=` で届いた Kindle の電池残量を `data/kindle.json` に保存し、フッター右に出す（6時間より古ければ出さない）。
 - `push.py` … PC 側で動かす送信コマンド `kindle-dash-push-claude`。`--statusline`、`--oauth`、`--file` の3方式。
 - `push_codex.py` … PC 側で動かす送信コマンド `kindle-dash-push-codex`。`codex app-server` と JSON-RPC で話して `account/rateLimits/read` を呼ぶ。`--hook` は Codex の `Stop` フック用。
+- `push_agy.py` … PC 側で動かす送信コマンド `kindle-dash-push-agy`。agy の statusline から呼ばれ、`quota` と `plan_tier` だけを `POST /agy-usage` に送る。
 - `__init__.py` … `kindle-dash-server` / `kindle-dash-snapshot` の入口。
 
 向きは `ORIENTATION` だけで決まる。`SCREEN_WIDTH` / `SCREEN_HEIGHT` はどちらの順で書いても同じ結果になる。
@@ -106,6 +110,21 @@ Claude パネルは、データがある状態で見る：`uv run kindle-dash-pu
   - stdin を閉じると、応答の前に終了する。そのため、応答を受け取るまで stdin は開いたままにする。
   - `rateLimits.primary` / `secondary` には `usedPercent`（0〜100）、`windowDurationMins`、`resetsAt`（epoch 秒）が入る。プランによっては `secondary` が無い（Free プランは43200分＝30日の枠だけ）。
   - 応答にはアカウントIDなども入るので、使うのは `rateLimits` 部分だけにする。
+
+## Antigravity（agy）使用量まわりの制約
+
+- 使用量を返す公式のコマンドや API は無い。
+  - `/usage` は対話画面だけ。
+  - `agy -p` の stream-json に入るのはトークン数だけ（確認済み）。
+  - フックの入力にもクォータは入らない。
+  - 公式に読めるのは、statusline のコマンドに stdin で渡される JSON の `quota` だけ。そのため、PC の statusline から送る方式にしている（コンテナ内では取れない）。
+- statusline の設定は `~/.gemini/antigravity-cli/settings.json` の `statusLine`（`type: command`、`command`、`stack_with_default` など）。状態が変わるたびに呼ばれ、5秒で打ち切られ、30回続けて失敗すると止まる。送信は軽く保つ（同じ内容なら5分は送らない、失敗後60秒は再送しない、タイムアウト1.5秒）。
+- `quota` はバケットID → `{remaining_fraction（0〜1）, reset_time（ISO）, reset_in_seconds}`。
+  - 実際のID（Google AI Pro）：`gemini-5h` / `gemini-weekly` / `3p-5h` / `3p-weekly`（Claude・GPT）/ `gemini-argon-wtu-weekly`。
+  - IDの末尾（`5h` / `weekly`）から枠の長さを、前半から系統を決める。知らない系統も表示はする。
+  - `remaining_amount` の枠（回数）と `disabled` の枠は、割合で出せないので飛ばす。
+- `reset_in_seconds` は呼ぶたびに減る。そのため、重複判定には残り（0.1%単位）と `reset_time` だけを使う。
+- statusline JSON には `email` も入る。送るのは `quota` と `plan_tier` だけにする。
 
 ## Kindle 側
 

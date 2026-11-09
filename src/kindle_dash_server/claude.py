@@ -24,7 +24,6 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 WINDOWS = {"five_hour": "5時間", "seven_day": "週間"}
-WEEKDAYS = "月火水木金土日"
 
 
 def data_file() -> Path:
@@ -97,44 +96,6 @@ def save(payload: dict, source: str = "push") -> dict:
 
 def load() -> dict | None:
     return read_json(data_file())
-
-
-def _when(dt: datetime, now: datetime) -> str:
-    hm = f"{dt.hour}:{dt.minute:02d}"
-    if dt.date() == now.date():
-        return hm
-    return f"{dt.month}/{dt.day}（{WEEKDAYS[dt.weekday()]}）{hm}"
-
-
-def view(now: datetime | None = None) -> dict | None:
-    """テンプレート用。データが無ければ None"""
-    return build_view(load(), WINDOWS, now)
-
-
-def build_view(data: dict | None, labels: dict[str, str], now: datetime | None = None) -> dict | None:
-    """保存した使用量（windows: {key: {used, resets_at}}）を表示用の行にする。Codex でも使う"""
-    if not data:
-        return None
-    now = now or datetime.now().astimezone()
-    rows = []
-    for key, label in labels.items():
-        w = data["windows"].get(key)
-        if not w:
-            continue
-        reset = _parse_time(w.get("resets_at"))
-        used = max(0.0, min(100.0, w["used"]))
-        if reset and reset <= now:
-            # 受信後にリセット時刻を過ぎていれば、枠は空いているとみなす
-            rows.append({"label": label, "used": 0, "left": 100, "reset": "リセット済み"})
-            continue
-        rows.append({
-            "label": label,
-            "used": round(used),
-            "left": round(100 - used),
-            "reset": f"{_when(reset, now)} リセット" if reset else "",
-        })
-    received = _parse_time(data.get("received_at"))
-    return {"rows": rows, "received": _when(received, now) if received else "—"}
 
 
 # ---- コンテナ内の Claude Code から取得する ----

@@ -26,7 +26,7 @@
   body.portrait {
     padding: 64px 72px 56px;
     grid-template-rows: auto 1fr auto auto auto;
-    grid-template-areas: "date" "weather" "train" "claude" "footer";
+    grid-template-areas: "date" "weather" "train" "usage" "footer";
     gap: 48px;
   }
   /* ---- 横置き：左に日付とClaude、右に天気と電車 ---- */
@@ -34,12 +34,12 @@
     padding: 52px 64px 40px;
     grid-template-columns: 480px 1fr;
     grid-template-rows: auto 1fr auto auto;
-    grid-template-areas: "date weather" "claude weather" "claude train" "footer footer";
+    grid-template-areas: "date weather" "usage weather" "usage train" "footer footer";
     column-gap: 72px; row-gap: 32px;
   }
   .date { grid-area: date; }
   .weather { grid-area: weather; min-width: 0; }
-  .claude { grid-area: claude; align-self: end; min-width: 0; }
+  .usage { grid-area: usage; align-self: end; min-width: 0; }
   .train { grid-area: train; min-width: 0; }
   footer { grid-area: footer; }
 
@@ -95,29 +95,30 @@
 
   .error { font-size: 40px; font-weight: 700; border: 6px solid var(--ink); padding: 28px; white-space: normal; }
 
-  /* AI の使用量（Claude・Codex）：残りを大きく、使った分をバーで */
-  .claude { border-top: 6px solid var(--ink); padding-top: 14px; display: grid; gap: 22px; }
-  .prov { display: grid; gap: 14px; }
-  .claude-head { display: flex; justify-content: space-between; align-items: baseline; }
-  .claude-title { font-size: 38px; font-weight: 700; }
-  .claude-at { font-size: 24px; color: var(--mid); }
-  .crow-head { display: flex; justify-content: space-between; align-items: baseline; }
-  .crow-label { font-size: 30px; font-weight: 700; }
-  .crow-prov { display: none; }
-  .crow-left { font-size: 28px; }
-  .crow-left b { font-size: 50px; font-weight: 700; line-height: 1; }
-  .bar { height: 26px; border: 5px solid var(--ink); margin-top: 4px; }
+  /* AI の使用量：1行1サービスの表。列は5時間枠と週間枠。数字は残り、バーは使った分 */
+  .usage { border-top: 6px solid var(--ink); padding-top: 10px; display: grid; row-gap: 12px; }
+  .u-row { display: grid; grid-template-columns: 158px 1fr 1fr; column-gap: 18px; align-items: start; }
+  .u-head { font-size: 22px; color: var(--mid); }
+  .u-name { font-size: 26px; font-weight: 700; line-height: 1.15; white-space: normal; }
+  .u-sub { font-size: 18px; color: var(--mid); line-height: 1.25; white-space: normal; }
+  .u-pct { font-size: 40px; font-weight: 700; line-height: 1; }
+  .u-pct small { font-size: 22px; font-weight: 500; }
+  .bar { height: 20px; border: 5px solid var(--ink); margin-top: 4px; }
   .bar .fill { height: 100%; background: var(--mid); }
-  .crow-reset { margin-top: 2px; font-size: 24px; color: var(--mid); }
+  .u-reset { margin-top: 2px; font-size: 18px; color: var(--mid); }
+  .u-none { font-size: 32px; color: var(--light); line-height: 1; }
+  .u-group { display: flex; align-items: baseline; gap: 16px; margin-top: 4px; }
+  .u-group .u-sub { white-space: nowrap; }
   /* 縦置きは高さが足りないので、各サービスの2枠を横に並べ、日付を少し小さく */
   .portrait { gap: 28px; padding-bottom: 44px; }
   .portrait .day { font-size: 280px; }
   .portrait .weather { gap: 28px; }
   .portrait .now-temp { font-size: 140px; }
-  .portrait .claude { gap: 14px; }
-  .portrait .prov { grid-template-columns: 1fr 1fr; column-gap: 56px; row-gap: 10px; }
-  .portrait .claude-head, .portrait .claude-empty { grid-column: 1 / -1; }
-  .claude-empty { font-size: 26px; color: var(--mid); white-space: normal; line-height: 1.4; }
+  .portrait .u-row { grid-template-columns: 240px 1fr 1fr; column-gap: 36px; }
+  /* 縦置きはセルが広いので、リセット時刻を残り%と同じ行の右に置いて行を低くする */
+  .portrait .u-cell { display: grid; grid-template-columns: auto 1fr; align-items: baseline; column-gap: 12px; }
+  .portrait .u-cell .bar { grid-column: 1 / -1; grid-row: 2; }
+  .portrait .u-reset { text-align: right; }
 
   /* 電車の発車時刻：時刻を大きく、種別と待ち時間は小さく */
   .train { border-top: 6px solid var(--ink); padding-top: 14px; display: grid; gap: 10px; }
@@ -144,14 +145,7 @@
   .portrait.with-train .day { font-size: 200px; }
   .portrait.with-train .weekday { font-size: 96px; }
   .portrait.with-train .now-temp { font-size: 120px; }
-  .portrait.with-train .claude-head { display: none; }
-  .portrait.with-train .crow-prov { display: inline; }
-  .portrait.with-train .days { display: none; }
-  /* 横置きで Claude と Codex を両方出すと左の列が足りないので、日付を少し小さくして詰める */
-  .landscape.with-codex .day { font-size: 250px; }
-  .landscape.with-codex .weekday { font-size: 84px; }
-  .landscape.with-codex .claude { gap: 14px; }
-  .landscape.with-codex .prov { gap: 8px; }
+  .portrait.with-train .days, .portrait.with-train .hours { display: none; }
 
   footer {
     display: flex; justify-content: space-between; align-items: center;
@@ -168,7 +162,7 @@
   .batt.low .batt-icon::after, .batt.low .batt-fill { background: var(--ink); }
 </style>
 </head>
-<body class="{{ 'landscape' if landscape else 'portrait' }}{{ ' with-train' if show_train and train }}{{ ' with-codex' if show_claude and show_codex }}">
+<body class="{{ 'landscape' if landscape else 'portrait' }}{{ ' with-train' if show_train and train }}">
 
   <section class="date">
     <div class="day">{{ day }}</div>
@@ -216,32 +210,29 @@
     {% endif %}
   </section>
 
-  {% macro usage(name, u, cmd) %}
-    <div class="prov">
-      <div class="claude-head">
-        <span class="claude-title">{{ name }}</span>
-        {% if u %}<span class="claude-at">{{ u.received }} 時点</span>{% endif %}
+  {% if usage %}
+  <section class="usage">
+    <div class="u-row u-head"><span>残り</span>{% for h in usage_headers %}<span>{{ h }}</span>{% endfor %}</div>
+    {% for r in usage %}
+    {% if r.group %}
+    <div class="u-group"><span class="u-name">{{ r.group }}</span><span class="u-sub">{{ r.sub }}</span></div>
+    {% else %}
+    <div class="u-row">
+      <div><div class="u-name">{{ r.name }}</div><div class="u-sub">{{ r.sub }}</div></div>
+      {% for c in r.cells %}
+      <div class="u-cell">
+        {% if c %}
+        <div class="u-pct">{{ c.left }}<small>%</small></div>
+        <div class="bar"><div class="fill" style="width: {{ c.used }}%"></div></div>
+        <div class="u-reset">{% if c.note %}{{ c.note }}・{% endif %}{{ c.reset }}</div>
+        {% else %}
+        <div class="u-none">—</div>
+        {% endif %}
       </div>
-      {% if u and u.rows %}
-        {% for r in u.rows %}
-        <div class="crow">
-          <div class="crow-head">
-            <span class="crow-label"><span class="crow-prov">{{ name }} </span>{{ r.label }}</span>
-            <span class="crow-left">残り <b>{{ r.left }}</b>%</span>
-          </div>
-          <div class="bar"><div class="fill" style="width: {{ r.used }}%"></div></div>
-          <div class="crow-reset">{{ r.reset }}</div>
-        </div>
-        {% endfor %}
-      {% else %}
-        <div class="claude-empty">{{ name }} の使用量をまだ受け取っていません（{{ cmd }}）</div>
-      {% endif %}
+      {% endfor %}
     </div>
-  {% endmacro %}
-  {% if show_claude or show_codex %}
-  <section class="claude">
-    {% if show_claude %}{{ usage("Claude", claude, "kindle-dash-push-claude") }}{% endif %}
-    {% if show_codex %}{{ usage("Codex", codex, "codex login --device-auth") }}{% endif %}
+    {% endif %}
+    {% endfor %}
   </section>
   {% endif %}
 
