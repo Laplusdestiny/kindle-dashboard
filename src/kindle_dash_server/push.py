@@ -31,9 +31,9 @@ RESEND_SECONDS = 300
 RETRY_SECONDS = 60
 
 
-def post(url: str, token: str | None, payload: dict, timeout: float) -> None:
+def post(url: str, token: str | None, payload: dict, timeout: float, path: str = "/claude-usage") -> None:
     headers = {"Authorization": f"Bearer {token}"} if token else {}
-    r = httpx.post(f"{url.rstrip('/')}/claude-usage", json=payload, headers=headers, timeout=timeout)
+    r = httpx.post(f"{url.rstrip('/')}{path}", json=payload, headers=headers, timeout=timeout)
     r.raise_for_status()
 
 
@@ -58,9 +58,9 @@ def statusline_text(rl: dict) -> str:
     return " · ".join(parts)
 
 
-def _should_send(digest: str) -> bool:
+def _should_send(digest: str, cache: Path = CACHE) -> bool:
     try:
-        last = json.loads(CACHE.read_text())
+        last = json.loads(cache.read_text())
     except (FileNotFoundError, json.JSONDecodeError):
         return True
     now = time.time()
@@ -69,9 +69,9 @@ def _should_send(digest: str) -> bool:
     return not (last.get("digest") == digest and now - last.get("at", 0) < RESEND_SECONDS)
 
 
-def _remember(**kw) -> None:
-    CACHE.parent.mkdir(parents=True, exist_ok=True)
-    CACHE.write_text(json.dumps(kw))
+def _remember(cache: Path = CACHE, **kw) -> None:
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(kw))
 
 
 def run_statusline(url: str, token: str | None, passthrough: str | None) -> None:

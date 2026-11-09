@@ -31,6 +31,22 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-install-project --no-dev \
  && playwright install --with-deps chromium
 
+# Codex CLI（使用量の取得用）。GitHub の公式リリースからバージョン固定で入れる。
+# 重い層のキャッシュを壊さないよう、Chromium の後に置く
+ARG CODEX_VERSION=0.167.0
+ARG TARGETARCH
+RUN case "${TARGETARCH:-amd64}" in \
+      amd64) arch=x86_64 ;; \
+      arm64) arch=aarch64 ;; \
+      *) echo "未対応のアーキテクチャ: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+ && curl -fsSL "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/codex-${arch}-unknown-linux-musl.tar.gz" \
+    | tar -xz -C /usr/local/bin \
+ && mv "/usr/local/bin/codex-${arch}-unknown-linux-musl" /usr/local/bin/codex \
+ && codex --version
+# Codex のログイン情報の置き場所。./data をマウントしているので再起動しても残る
+ENV CODEX_HOME=/srv/data/codex
+
 # 2) アプリ本体
 COPY README.md ./
 COPY src ./src

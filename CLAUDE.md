@@ -27,11 +27,15 @@ docker compose build                                         # 本番と同じ�
 - `templates/dashboard.html` … Jinja2 テンプレート。`body.landscape` / `body.portrait` でレイアウトを切り替える。
 - `main.py` … FastAPI のアプリ本体。
   - 描画の流れ：HTML を Playwright の Chromium で撮影 → `to_kindle_png()` でグレースケール化 → 16階調に丸める →（必要なら回転）→ PNG。
-  - エンドポイント：`/dash.png`（`CACHE_SECONDS` の間キャッシュ）、`/preview`（撮影前のHTML）、`POST /claude-usage`、`GET /claude-usage`、`/health`。
+  - エンドポイント：`/dash.png`（`CACHE_SECONDS` の間キャッシュ。`?battery=82` で Kindle の電池残量も受け取る）、`/preview`（撮影前のHTML）、`POST` / `GET /claude-usage`、`POST` / `GET /codex-usage`、`/health`。
 - `claude.py` … Claude 使用量を受け取り（`normalize`）、`data/claude_usage.json` へ保存し、表示用に整形する（`view`）。
 - `train.py` … 阪急の駅時刻表ページを1日1回取得して解析し（`parse_timetable`）、`data/train/` に保存する。平日・土休日は内閣府の祝日CSVで判定し、`TRAIN_WINDOW_MINUTES` 分以内の発車を返す（`view`）。
-  - 電車パネルを出すと `body.with-train` が付き、天気などの余白を詰めて1画面に収める。縦置きでは Claude の見出しを隠している。
+  - 電車パネルを出すと `body.with-train` が付き、天気などの余白を詰めて1画面に収める。縦置きでは、使用量の見出しと3日分の予報を隠し、行のラベルを「Claude 5時間」のようにしている。
+  - Claude と Codex を両方出すと `body.with-codex` が付き、横置きでは日付を少し小さくして左の列に収める。
+- `codex.py` … Codex 使用量を `codex app-server` で読み（`fetch_rate_limits`。コンテナ内の定期取得 `poll_loop` と PC 側の送信コマンドで共用）、受け取った値（`normalize`）を `data/codex_usage.json` へ保存する。保存・表示は `claude.py` の `write_json` / `read_json` / `build_view` を共用している。
+- `kindle.py` … `/dash.png?battery=` で届いた Kindle の電池残量を `data/kindle.json` に保存し、フッター右に出す（6時間より古ければ出さない）。
 - `push.py` … PC 側で動かす送信コマンド `kindle-dash-push-claude`。`--statusline`、`--oauth`、`--file` の3方式。
+- `push_codex.py` … PC 側で動かす送信コマンド `kindle-dash-push-codex`。`codex app-server` と JSON-RPC で話して `account/rateLimits/read` を呼ぶ。`--hook` は Codex の `Stop` フック用。
 - `__init__.py` … `kindle-dash-server` / `kindle-dash-snapshot` の入口。
 
 向きは `ORIENTATION` だけで決まる。`SCREEN_WIDTH` / `SCREEN_HEIGHT` はどちらの順で書いても同じ結果になる。
@@ -80,7 +84,28 @@ Claude パネルは、データがある状態で見る：`uv run kindle-dash-pu
    - 非公開の `/api/oauth/usage` を使う。未検証で、仕様が変わることがある。
 
 - `rate_limits` や、その中の各枠は欠けることがある。欠けていても落ちないようにする。
-- トークン類（`CLAUDE_CODE_OAUTH_TOKEN`、`PUSH_TOKEN`）は `.env` にだけ書く。`docker-compose.yml` やコードに値を書かない。
+- トークン類（`CLAUDE_CODE_OAUTH_TOKEN`、`CODEX_ACCESS_TOKEN`、`PUSH_TOKEN`）は `.env` にだけ書く。`docker-compose.yml` やコードに値を書かない。
+
+## Codex 使用量まわりの制約
+
+使用量の入り方は2つある。どちらも `data/codex_usage.json` に保存し、新しい値が勝つ。
+
+1. **コンテナ内の Codex**（`codex.poll_loop`）
+   - `codex` があり、`CODEX_ACCESS_TOKEN` か `CODEX_HOME` が設定されているときだけ動く。Docker では Dockerfile で `CODEX_HOME=/srv/data/codex` を入れている。ローカル開発では `CODEX_HOME` を設定しないので、PC の `~/.codex` のログインは勝手には使わない。
+   - `CODEX_ACCESS_TOKEN`（Codex のアクセストークン）は、ChatGPT の **Business / Enterprise ワークスペース専用**。個人プラン（このPCは Free）では発行できない。
+     - app-server はこの環境変数を直接は読まない（ダミーで確認済み）。そのため、起動時に `codex login --with-access-token` で `CODEX_HOME` に保存してから使う。
+     - トークンの形式が不正でも、`codex login` は終了コード 0 で終わる。そのため、出力の `Error` で失敗を判定している。
+     - 本物のトークンでの動作は未確認。
+   - 個人プランは、コンテナ内で `codex login --device-auth` を一度実行する。NAS 専用の別ログインになるので、PC のログインには影響しない。
+   - **PC の `~/.codex/auth.json` を NAS にコピーしない。** 更新用のトークンを共有するので、どちらかが更新すると、もう一方のログインが切れるおそれがある。
+   - Codex CLI はイメージ内でバージョン固定（Dockerfile の `CODEX_VERSION`、GitHub の公式リリース）。バイナリは約320MBある。
+2. **PC から POST**（`push_codex.py`、`--hook` は Codex の `Stop` フック用）
+   - Claude の statusline と同じく、送信は軽く保つ。
+
+- 取得は `codex app-server` の `account/rateLimits/read`（`codex app-server generate-json-schema` でスキーマを見られる）。
+  - stdin を閉じると、応答の前に終了する。そのため、応答を受け取るまで stdin は開いたままにする。
+  - `rateLimits.primary` / `secondary` には `usedPercent`（0〜100）、`windowDurationMins`、`resetsAt`（epoch 秒）が入る。プランによっては `secondary` が無い（Free プランは43200分＝30日の枠だけ）。
+  - 応答にはアカウントIDなども入るので、使うのは `rateLimits` 部分だけにする。
 
 ## Kindle 側
 

@@ -10,7 +10,7 @@ from datetime import datetime
 
 import httpx
 
-from . import claude, train
+from . import claude, codex, kindle, train
 
 # WMO天気コード → 日本語
 WEATHER_TEXT = {
@@ -105,6 +105,9 @@ async def collect() -> dict:
         "error": None,
         "show_claude": (os.getenv("SHOW_CLAUDE") or "1") != "0",
         "claude": claude.view(),
+        "show_codex": (os.getenv("SHOW_CODEX") or "1") != "0",
+        "codex": codex.view(),
+        "battery": kindle.view(),
         "show_train": (os.getenv("SHOW_TRAIN") or "1") != "0",
         "train": None,
     }

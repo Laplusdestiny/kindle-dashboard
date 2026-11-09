@@ -13,7 +13,7 @@ from jinja2 import Environment, FileSystemLoader
 from PIL import Image
 from playwright.async_api import Browser, async_playwright
 
-from . import claude
+from . import claude, codex, kindle
 from .data import collect
 
 WIDTH = int(os.getenv("SCREEN_WIDTH") or "1072")
@@ -40,13 +40,16 @@ async def launch_browser(pw) -> Browser:
 async def lifespan(app: FastAPI):
     pw = await async_playwright().start()
     state["browser"] = await launch_browser(pw)
-    poller = None
+    pollers = []
+    # 取れたら画像キャッシュを捨てて、次のアクセスで描き直す
+    invalidate = lambda: state.update(png=None)  # noqa: E731
     if claude.poll_enabled():
-        # 取れたら画像キャッシュを捨てて、次のアクセスで描き直す
-        poller = asyncio.create_task(claude.poll_loop(on_update=lambda: state.update(png=None)))
+        pollers.append(asyncio.create_task(claude.poll_loop(on_update=invalidate)))
+    if codex.poll_enabled():
+        pollers.append(asyncio.create_task(codex.poll_loop(on_update=invalidate)))
     yield
-    if poller:
-        poller.cancel()
+    for t in pollers:
+        t.cancel()
     await state["browser"].close()
     await pw.stop()
 
@@ -98,7 +101,11 @@ async def render_png(browser: Browser) -> bytes:
 
 
 @app.get("/dash.png")
-async def dash_png():
+async def dash_png(battery: str | None = None):
+    """Kindle が取りに来る画像。?battery=82 で電池残量も受け取る"""
+    level = kindle.parse_battery(battery)
+    if level is not None and kindle.save_battery(level):
+        state["png"] = None  # 残量が変わったら描き直す
     async with lock:
         if state["png"] is None or time.time() - state["at"] > CACHE_SECONDS:
             state["png"] = await render_png(state["browser"])
@@ -129,6 +136,24 @@ async def push_claude_usage(request: Request, authorization: str | None = Header
 @app.get("/claude-usage")
 async def get_claude_usage():
     return claude.load() or {}
+
+
+@app.post("/codex-usage")
+async def push_codex_usage(request: Request, authorization: str | None = Header(None)):
+    """PC から Codex の使用量を受け取る（kindle-dash-push-codex が送ってくる）"""
+    if PUSH_TOKEN and authorization != f"Bearer {PUSH_TOKEN}":
+        raise HTTPException(401, "invalid token")
+    try:
+        data = codex.save(await request.json())
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    state["png"] = None
+    return data
+
+
+@app.get("/codex-usage")
+async def get_codex_usage():
+    return codex.load() or {}
 
 
 @app.get("/health")

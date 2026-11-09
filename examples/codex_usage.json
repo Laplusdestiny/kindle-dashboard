@@ -1,0 +1,5 @@
+{
+  "primary": {"usedPercent": 37, "windowDurationMins": 300, "resetsAt": 1798732800},
+  "secondary": {"usedPercent": 64, "windowDurationMins": 10080, "resetsAt": 1799078400},
+  "planType": "plus"
+}
