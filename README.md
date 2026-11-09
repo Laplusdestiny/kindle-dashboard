@@ -70,9 +70,12 @@ docker compose up -d --build
 | `LANDSCAPE_ROTATE` | 横長のデザインを回して、縦長PNG（1072×1448）で出力する（既定 `90`）。`90` は Kindle の下端（電源ボタン・USB）が左に来る向き。上下が逆なら `270`。`0` だと横長PNGのままになり、Kindle では右側が切れる |
 | `CACHE_SECONDS` | 同じ画像を使い回す秒数（既定60。ローカルで編集しながら見るなら `0`） |
 | `SHOW_CLAUDE` | `0` で Claude 使用量パネルを隠す |
+| `SHOW_CODEX` | `0` で Codex 使用量パネルを隠す |
 | `PUSH_TOKEN` | 設定すると使用量の送信にこのトークンが必要になる |
 | `CLAUDE_CODE_OAUTH_TOKEN` | `claude setup-token` のトークン。設定するとコンテナ内で使用量を定期取得する |
 | `CLAUDE_POLL_MINUTES` | 上の取得間隔（分、既定15）。`0` で取得しない |
+| `CODEX_ACCESS_TOKEN` | Codex のアクセストークン（Business / Enterprise のみ）。個人プランは `codex login --device-auth` でログインする |
+| `CODEX_POLL_MINUTES` | コンテナ内で Codex 使用量を取得する間隔（分、既定15）。`0` で取得しない |
 | `DATA_DIR` | 受け取った使用量と、取得した時刻表の保存先（既定 `data/`、Docker では `./data` をマウント） |
 | `SHOW_TRAIN` | `0` で電車の発車時刻パネルを隠す |
 | `TRAIN_LABEL` | パネルの見出し（既定 `岡町 → 大阪梅田`） |
@@ -153,6 +156,83 @@ curl http://localhost:8080/claude-usage
 
 `PUSH_TOKEN` を設定した場合は、PC 側で `--token <値>` を付けるか、環境変数 `KINDLE_DASH_TOKEN` を設定します。
 
+## Codex の使用量を表示する
+
+ChatGPT プランでの Codex の残り（5時間枠・週間枠など）を、Claude の下に出します。
+使用量は `codex app-server` の `account/rateLimits/read`（Codex 公式のプロトコル）で読みます。
+- トークンは消費しません。
+- アカウントIDなどは保存せず、`rateLimits` 部分だけを使います。
+
+枠の名前は `windowDurationMins` から作ります（300分→5時間、10080分→週間、43200分→30日）。
+プランによっては枠が1つだけのこともあります（Free プランは30日枠のみ）。
+
+### 方法A：コンテナ内の Codex で取得する（NAS だけで完結）
+
+イメージには Codex CLI が入っています（Dockerfile の `CODEX_VERSION` で固定）。
+ログインしていれば、サーバーが起動直後と `CODEX_POLL_MINUTES`（既定15分）ごとに使用量を読みます。
+ログイン情報は `CODEX_HOME`（`/srv/data/codex`、つまり NAS の `./data/codex`）に保存されるので、再起動しても残ります。
+
+ログインのしかたは、プランによって次のどちらかです。
+
+- **個人プラン（Free / Plus / Pro など）**：コンテナ内で一度だけデバイスコードでログインします。
+
+  ```bash
+  docker compose exec kindle-dash codex login --device-auth
+  ```
+
+  表示されたURLをPCのブラウザで開き、コードを入力します。
+  これは NAS 専用の別のログインなので、PC の Codex のログインには影響しません。
+  - Codex は自動でトークンを更新します。
+  - ログアウトしたいときは、`docker compose exec kindle-dash codex logout` を実行します。
+  - PC の `~/.codex/auth.json` を NAS にコピーするのはやめてください。更新用のトークンを共有することになり、どちらかが更新すると、もう一方のログインが切れるおそれがあります。
+
+- **Business / Enterprise ワークスペース**：管理画面で発行したアクセストークンを `.env` に書きます（個人プランでは発行できません）。
+
+  ```bash
+  CODEX_ACCESS_TOKEN=...
+  ```
+
+  サーバーは起動時に `codex login --with-access-token` でログインしてから取得します。
+  app-server はこの環境変数を直接は読まないため、このようにしています。
+
+ログインできていなければ、`docker compose logs` に案内が1回出ます。
+取得できると `Codex 使用量を更新` と出ます。
+
+### 方法B：PC から送る
+
+PC で `kindle-dash-push-codex` を動かすと、PC の Codex のログインで読んで、`POST /codex-usage` に送ります。
+
+```bash
+uv run kindle-dash-push-codex --url http://<NASのIP>:8080
+```
+
+Codex のターンが終わるたびに自動で送るには、`~/.codex/hooks.json` の `Stop` フックに登録します。
+`--hook` を付けると次のように動き、Codex を止めないようにしています。
+- 何も出力しない。
+- 失敗しても終了コード 0 で終わる。
+- 同じ内容は5分送らない。
+- 失敗した後の60秒は送らない。
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --quiet --frozen --project /path/to/kindle-dash-server kindle-dash-push-codex --hook --url http://<NASのIP>:8080",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+動作確認用には `uv run kindle-dash-push-codex --file examples/codex_usage.json --url ...` も使えます。
+
 ## 電車の発車時刻
 
 阪急公式サイトの駅時刻表ページ（平日・土曜休日の2枚）を取得して、今から30分以内の発車を表示する。
@@ -169,6 +249,25 @@ curl http://localhost:8080/claude-usage
 `/mnt/us/dashboard/local/fetch-dashboard.sh` の中にあるURL（GitHubのサンプル画像）を、
 `http://<サーバーのIP>:8080/dash.png` に書き換えます。
 KindleはHTTPSの証明書が古く失敗することがあるので、LAN内では `http://` を使います。
+
+画面の右下に電池残量を出すには、残量を `battery` パラメータで付けて取りに来るようにします。
+`gasgauge-info -c` は `82%` のように返します。サーバー側で数字だけを読むので、`%` が付いたままでも構いません。
+
+```sh
+#!/usr/bin/env sh
+# kindle-dash 付属の xh を使う場合（param==value でクエリを付ける）
+"$(dirname "$0")/../xh" -d -q -o "$1" get "http://<サーバーのIP>:8080/dash.png" battery=="$(gasgauge-info -c)"
+```
+
+```sh
+#!/usr/bin/env sh
+# curl を使う場合
+curl -fsS -o "$1" "http://<サーバーのIP>:8080/dash.png?battery=$(gasgauge-info -c | tr -d '%')"
+```
+
+- 残量が前回から変わると、キャッシュがあっても描き直します。
+- 20%以下は太字の墨色で目立たせます。
+- 6時間以上届いていなければ、電池の表示を消します。Kindle が止まっているかもしれないためです。
 
 更新間隔は `/mnt/us/dashboard/local/env.sh` の cron 式で変えられます。
 

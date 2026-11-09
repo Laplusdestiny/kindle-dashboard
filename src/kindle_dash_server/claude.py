@@ -75,21 +75,28 @@ def normalize(payload: dict, source: str = "push") -> dict:
     return {"windows": windows, "received_at": datetime.now().astimezone().isoformat(), "source": source}
 
 
-def save(payload: dict, source: str = "push") -> dict:
-    data = normalize(payload, source)
-    path = data_file()
+def write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(path)  # 書きかけを読まれないように置き換えで保存
+
+
+def read_json(path: Path) -> dict | None:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
+def save(payload: dict, source: str = "push") -> dict:
+    data = normalize(payload, source)
+    write_json(data_file(), data)
     return data
 
 
 def load() -> dict | None:
-    try:
-        return json.loads(data_file().read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError):
-        return None
+    return read_json(data_file())
 
 
 def _when(dt: datetime, now: datetime) -> str:
@@ -101,12 +108,16 @@ def _when(dt: datetime, now: datetime) -> str:
 
 def view(now: datetime | None = None) -> dict | None:
     """テンプレート用。データが無ければ None"""
-    data = load()
+    return build_view(load(), WINDOWS, now)
+
+
+def build_view(data: dict | None, labels: dict[str, str], now: datetime | None = None) -> dict | None:
+    """保存した使用量（windows: {key: {used, resets_at}}）を表示用の行にする。Codex でも使う"""
     if not data:
         return None
     now = now or datetime.now().astimezone()
     rows = []
-    for key, label in WINDOWS.items():
+    for key, label in labels.items():
         w = data["windows"].get(key)
         if not w:
             continue
