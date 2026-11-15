@@ -155,8 +155,9 @@ async def poll_once(timeout: float = 120) -> dict | None:
     return data
 
 
-async def poll_loop(on_update=None) -> None:
-    """起動直後に1回、その後 CLAUDE_POLL_MINUTES ごとに取得する"""
+async def poll_loop(on_update=None, start_delay: float = 0) -> None:
+    """起動から start_delay 秒後に1回、その後 CLAUDE_POLL_MINUTES ごとに取得する"""
+    await asyncio.sleep(start_delay)
     while True:
         try:
             if await poll_once() and on_update:

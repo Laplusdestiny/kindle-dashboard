@@ -23,13 +23,14 @@ docker compose build                                         # 本番と同じ�
 
 `src/kindle_dash_server/`（uv_build の src レイアウト。editable でインストールされる）
 
-- `data.py` … `collect()` がテンプレートに渡す値を集める（日付、Open-Meteo の天気、`claude.view()`、`train.view()`）。
+- `data.py` … `collect()` がテンプレートに渡す値を集める（日付、天気、時刻表、使用量、電池）。**保存済みのデータを読むだけで、外部には取りに行かない。** 天気は `weather_loop()` が裏で取得して `data/weather.json` に保存する。
 - `templates/dashboard.html` … Jinja2 テンプレート。`body.landscape` / `body.portrait` でレイアウトを切り替える。
 - `main.py` … FastAPI のアプリ本体。
+  - `/dash.png` は、描画に失敗するか `RENDER_TIMEOUT_SECONDS` を超えたら、前回描けた画像（`state["last_good"]`、`data/last_dash.png`）を返して Chromium を起動し直す。500 は返さない。所要時間をログに出す。
   - 描画の流れ：HTML を Playwright の Chromium で撮影 → `to_kindle_png()` でグレースケール化 → 16階調に丸める →（必要なら回転）→ PNG。
   - エンドポイント：`/dash.png`（`CACHE_SECONDS` の間キャッシュ。`?battery=82` で Kindle の電池残量も受け取る）、`/preview`（撮影前のHTML）、`GET /claude-usage`・`/codex-usage`・`/agy-usage`（保存内容の確認用）、`/health`。
 - `claude.py` … Claude 使用量を受け取り（`normalize`）、`data/claude_usage.json` へ保存し、表示用に整形する（`view`）。
-- `train.py` … 阪急の駅時刻表ページを1日1回取得して解析し（`parse_timetable`）、`data/train/` に保存する。平日・土休日は内閣府の祝日CSVで判定し、`TRAIN_WINDOW_MINUTES` 分以内の発車を返す（`view`）。
+- `train.py` … 阪急の駅時刻表ページを裏のループ（`poll_loop` → `refresh`）が1日1回取得して解析し（`parse_timetable`）、`data/train/` に保存する。平日・土休日は内閣府の祝日CSVで判定し、`view` は保存済みのファイルだけから `TRAIN_WINDOW_MINUTES` 分以内の発車を返す。
   - 電車パネルを出すと `body.with-train` が付き、天気などの余白を詰めて1画面に収める。縦置きでは、3時間ごとの予報と3日分の予報を隠している。
   - AI の使用量は、1行1サービスの表（`.usage`）にしている。列は「5時間」「週間」。Antigravity は系統（Gemini・Claude/GPT・Argon）ごとに行を分け、見出し行を1つ置く。サービスや枠が増えると行が増えるので、追加したら横置き・縦置きの両方で収まるかを見る。
 - `codex.py` … Codex 使用量を `codex app-server` で定期取得し（`fetch_rate_limits` / `poll_loop`）、`data/codex_usage.json` へ保存する。
@@ -37,7 +38,7 @@ docker compose build                                         # 本番と同じ�
 - `usage.py` … Claude・Codex・Antigravity の保存データから、使用量パネルの表（`rows`）を作る。どの枠を「5時間」「週間」のどちらの列に入れるかは、枠の長さ（分）で決める。
   - 保存・読み込みは `claude.py` の `write_json` / `read_json` を共用している。
 - `kindle.py` … `/dash.png?battery=` で届いた Kindle の電池残量を `data/kindle.json` に保存し、フッター右に出す（6時間より古ければ出さない）。
-- `__init__.py` … `kindle-dash-server` / `kindle-dash-snapshot` の入口。
+- `__init__.py` … `kindle-dash-server` / `kindle-dash-snapshot` の入口。ログの形式（時刻つき）は `log_config()` で決め、uvicorn に渡している。`kindle-dash-snapshot` は描く前に `data.refresh_all()` で天気と時刻表を1回取得する。
 
 向きは `ORIENTATION` だけで決まる。`SCREEN_WIDTH` / `SCREEN_HEIGHT` はどちらの順で書いても同じ結果になる。
 `LANDSCAPE_ROTATE=0` で横長PNG（1448×1072）、`90` / `270` で縦長PNGに回して出力する（Pillow の `rotate` なので反時計回り）。本番は `90`。
@@ -65,10 +66,18 @@ docker compose build                                         # 本番と同じ�
 - 横置き・縦置きのどちらでも1画面に収める（`overflow: hidden` なので、はみ出すと黙って切れる）。主に使うのは横置き。
 - Jinja では `{{ x.pop }}` のような書き方をすると、辞書のキーより先に dict のメソッドが解決される。表示データのキーに `pop` / `items` / `keys` / `values` / `get` などを使わない（実際に `pop` で表示が崩れたことがある）。
 
+## 応答を止めないためのルール
+
+Kindle は画像が返るまで起きたまま待つ（xh に時間制限が無い）。2026-11-14 に NAS が固まって応答に最長32分かかり、Kindle の電池が大きく減ったことがある。
+
+- **リクエストの中で外部に取りに行かない。** 外部データは裏のループで取得して `data/` に保存し、描画は保存済みの値だけで行う。
+- 描画の失敗で 500 を返さない。前回の画像を返す。
+- 重い CLI（claude / codex / agy）は同時に動かさない。`main.py` の `POLL_STAGGER`（300秒）ずつ開始をずらしている。
+
 ## 使用量の取得まわりの共通ルール
 
 - **使用量はコンテナ内で取得する。PC など別のマシンから送ってもらう機能は持たない**（ユーザーの判断で削除した。POST エンドポイントも無い）。
-- 各サービスの `poll_loop` は、起動直後に1回、その後 `*_POLL_MINUTES`（既定15分）ごとに取得する。失敗してもループは止めず、同じ失敗のログは1回だけ出す。
+- 各サービスの `poll_loop` は、起動から `start_delay` 秒後に1回、その後 `*_POLL_MINUTES`（既定15分）ごとに取得する。失敗してもループは止めず、同じ失敗のログは1回だけ出す。
 - トークン類（`CLAUDE_CODE_OAUTH_TOKEN`、`CODEX_ACCESS_TOKEN`）は `.env` にだけ書く。`docker-compose.yml` やコードに値を書かない。
 - ログイン情報（Codex・agy）は `./data` の下に置き、再起動しても残るようにする。**PC のログイン情報を NAS にコピーしない**（NAS では別にログインする）。
 

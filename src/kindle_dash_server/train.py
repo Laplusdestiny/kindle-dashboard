@@ -1,13 +1,15 @@
 """最寄り駅の発車時刻（初期値は阪急宝塚線 岡町駅の大阪梅田方面）。
 
 阪急公式サイトの駅時刻表ページ（平日／土曜・休日）を取得して解析し、
-DATA_DIR/train/ に保存する。時刻表は1日1回だけ取り直し、
-描画のたびに「今から TRAIN_WINDOW_MINUTES 分以内」の発車を計算する。
+DATA_DIR/train/ に保存する。取得は裏のループ（poll_loop）が行い、時刻表は1日1回だけ取り直す。
+描画のとき（view）は保存済みのファイルだけを読んで、
+「今から TRAIN_WINDOW_MINUTES 分以内」の発車を計算する（外部には取りに行かない）。
 
 平日か土休日かは、内閣府の祝日CSVで判定する（取れなければ土日だけで判定）。
 """
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json
@@ -79,37 +81,60 @@ def _write(path: Path, text: str) -> None:
     tmp.replace(path)
 
 
-async def _timetable(client: httpx.AsyncClient, day: str) -> list[dict]:
-    """day は "w"（平日）か "h"（土曜・休日）。古ければ取り直し、失敗したら手元の分を使う"""
+def _timetable_path(day: str) -> tuple[str, Path]:
+    """day は "w"（平日）か "h"（土曜・休日）"""
     url = (os.getenv("TRAIN_TIMETABLE_URL") or DEFAULT_URL).format(day=day)
-    path = _dir() / (re.sub(r"[^\w-]", "_", Path(url).stem) + ".json")
-    if not _fresh(path, TIMETABLE_MAX_AGE):
-        try:
-            r = await client.get(url)
-            r.raise_for_status()
-            trains = parse_timetable(r.text)
-            _write(path, json.dumps({"url": url, "trains": trains}, ensure_ascii=False))
-            log.info("時刻表を更新しました: %s（%d本）", url, len(trains))
-            return trains
-        except Exception as e:
-            if not path.exists():
-                raise
-            log.warning("時刻表を取得できないため前回の分を使います: %s (%s)", url, e)
-    return json.loads(path.read_text(encoding="utf-8"))["trains"]
+    return url, _dir() / (re.sub(r"[^\w-]", "_", Path(url).stem) + ".json")
 
 
-async def _holidays(client: httpx.AsyncClient) -> set[date]:
-    path = _dir() / "holidays.csv"
-    if not _fresh(path, HOLIDAY_MAX_AGE):
+def _holiday_path() -> Path:
+    return _dir() / "holidays.csv"
+
+
+async def refresh() -> None:
+    """古くなった時刻表と祝日CSVを取り直す。失敗したら前回の分を残す"""
+    async with httpx.AsyncClient(timeout=10, headers=HEADERS) as client:
+        for day in ("w", "h"):
+            url, path = _timetable_path(day)
+            if _fresh(path, TIMETABLE_MAX_AGE):
+                continue
+            try:
+                r = await client.get(url)
+                r.raise_for_status()
+                trains = parse_timetable(r.text)
+                _write(path, json.dumps({"url": url, "trains": trains}, ensure_ascii=False))
+                log.info("時刻表を更新しました: %s（%d本）", url, len(trains))
+            except Exception as e:
+                log.warning("時刻表を取得できませんでした。前回の分を使います: %s (%s)", url, e)
+        if not _fresh(_holiday_path(), HOLIDAY_MAX_AGE):
+            try:
+                r = await client.get(HOLIDAY_URL)
+                r.raise_for_status()
+                _write(_holiday_path(), r.content.decode("cp932"))
+            except Exception as e:
+                log.warning("祝日CSVを取得できませんでした (%s)", e)
+
+
+async def poll_loop(on_update=None) -> None:
+    """起動直後に1回、その後1時間ごとに、古くなっていれば取り直す"""
+    while True:
         try:
-            r = await client.get(HOLIDAY_URL)
-            r.raise_for_status()
-            _write(path, r.content.decode("cp932"))
-        except Exception as e:
-            log.warning("祝日CSVを取得できませんでした (%s)", e)
+            await refresh()
+            if on_update:
+                on_update()
+        except Exception:  # ループ自体は止めない
+            log.exception("時刻表の取得に失敗")
+        await asyncio.sleep(3600)
+
+
+def _timetable(day: str) -> list[dict]:
+    return json.loads(_timetable_path(day)[1].read_text(encoding="utf-8"))["trains"]
+
+
+def _holidays() -> set[date]:
     days: set[date] = set()
     try:
-        for row in csv.reader(io.StringIO(path.read_text(encoding="utf-8"))):
+        for row in csv.reader(io.StringIO(_holiday_path().read_text(encoding="utf-8"))):
             try:
                 days.add(datetime.strptime(row[0], "%Y/%m/%d").date())
             except (ValueError, IndexError):
@@ -123,8 +148,8 @@ def _day_type(d: date, holidays: set[date]) -> str:
     return "h" if d.weekday() >= 5 or d in holidays else "w"
 
 
-async def view(now: datetime | None = None) -> dict:
-    """テンプレート用。取得に失敗したら error を入れて返す"""
+def view(now: datetime | None = None) -> dict:
+    """テンプレート用。保存済みの時刻表が無ければ error を入れて返す"""
     now = (now or datetime.now()).replace(second=0, microsecond=0)
     span = window_minutes()
     out = {
@@ -135,21 +160,23 @@ async def view(now: datetime | None = None) -> dict:
         "error": None,
     }
     try:
-        async with httpx.AsyncClient(timeout=10, headers=HEADERS) as client:
-            holidays = await _holidays(client)
-            tables: dict[str, list[dict]] = {}
-            departures = []
-            # 深夜は前日のダイヤ、終電後は翌日の始発も候補にする
-            for offset in (-1, 0, 1):
-                d = now.date() + timedelta(days=offset)
-                kind = _day_type(d, holidays)
-                if kind not in tables:
-                    tables[kind] = await _timetable(client, kind)
-                base = datetime.combine(d, datetime.min.time())
-                for tr in tables[kind]:
-                    departures.append((base + timedelta(minutes=tr["t"]), tr))
+        holidays = _holidays()
+        tables: dict[str, list[dict]] = {}
+        departures = []
+        # 深夜は前日のダイヤ、終電後は翌日の始発も候補にする
+        for offset in (-1, 0, 1):
+            d = now.date() + timedelta(days=offset)
+            kind = _day_type(d, holidays)
+            if kind not in tables:
+                tables[kind] = _timetable(kind)
+            base = datetime.combine(d, datetime.min.time())
+            for tr in tables[kind]:
+                departures.append((base + timedelta(minutes=tr["t"]), tr))
+    except FileNotFoundError:
+        out["error"] = "時刻表をまだ取得できていません"
+        return out
     except Exception as e:
-        out["error"] = f"時刻表を取得できませんでした（{type(e).__name__}）"
+        out["error"] = f"時刻表を読めませんでした（{type(e).__name__}）"
         return out
 
     departures.sort(key=lambda x: x[0])
