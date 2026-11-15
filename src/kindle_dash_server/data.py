@@ -1,16 +1,26 @@
 """ダッシュボードに載せるデータを集める。
 
-表示項目を増やしたいときは、ここに取得関数を足して
-collect() の戻り値に入れ、テンプレートで使う。
+collect() は保存済みのデータを読むだけで、外部には取りに行かない（描画を待たせないため）。
+天気は weather_loop() が裏で定期取得して DATA_DIR/weather.json に保存する。
+表示項目を増やしたいときは、取得は裏のループに、表示は collect() の戻り値に足す。
 """
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import httpx
 
 from . import kindle, train, usage
+from .claude import _parse_time, read_json, write_json
+
+log = logging.getLogger(__name__)
+
+# これより古い天気は出さない（予報がずれるため）
+WEATHER_STALE = timedelta(hours=3)
 
 # WMO天気コード → 日本語
 WEATHER_TEXT = {
@@ -92,28 +102,72 @@ def shape_weather(raw: dict, now: datetime) -> dict:
     }
 
 
-async def collect() -> dict:
+def weather_file() -> Path:
+    return Path(os.getenv("DATA_DIR") or "data") / "weather.json"
+
+
+def weather_minutes() -> float:
+    return float(os.getenv("WEATHER_POLL_MINUTES") or "10")
+
+
+async def refresh_weather() -> bool:
+    """天気を取得して保存する。失敗したら前回の分を残して False"""
+    try:
+        raw = await fetch_weather()
+    except Exception as e:
+        log.warning("天気を取得できませんでした（%s）。前回の分を使います", type(e).__name__)
+        return False
+    write_json(weather_file(), {"raw": raw, "fetched_at": datetime.now().astimezone().isoformat()})
+    return True
+
+
+async def weather_loop(on_update=None) -> None:
+    """起動直後に1回、その後 WEATHER_POLL_MINUTES ごとに取得する"""
+    while True:
+        try:
+            if await refresh_weather() and on_update:
+                on_update()
+        except Exception:  # ループ自体は止めない
+            log.exception("天気の取得に失敗")
+        await asyncio.sleep(max(1.0, weather_minutes()) * 60)
+
+
+async def refresh_all() -> None:
+    """天気と時刻表を1回取りに行く（スナップショット用。サーバーでは各ループが行う）"""
+    await asyncio.gather(refresh_weather(), train.refresh())
+
+
+def load_weather(now: datetime) -> tuple[dict | None, str | None]:
+    """保存済みの天気を表示用にする。戻り値は (天気, エラー文)"""
+    saved = read_json(weather_file())
+    if not saved:
+        return None, "天気をまだ取得できていません"
+    fetched = _parse_time(saved.get("fetched_at"))
+    if fetched and now.astimezone() - fetched > WEATHER_STALE:
+        return None, f"天気を {fetched.hour}:{fetched.minute:02d} から取得できていません"
+    try:
+        return shape_weather(saved["raw"], now), None
+    except Exception as e:  # 保存内容が壊れていても日付だけは出す
+        return None, f"天気を表示できませんでした（{type(e).__name__}）"
+
+
+def collect() -> dict:
     now = datetime.now()
-    ctx = {
+    weather, error = load_weather(now)
+    show_train = (os.getenv("SHOW_TRAIN") or "1") != "0"
+    return {
         "place": (os.getenv("PLACE_NAME") or "大阪"),
         "year": now.year,
         "month": now.month,
         "day": now.day,
         "weekday": WEEKDAYS[now.weekday()],
         "updated": now.strftime("%H:%M"),
-        "weather": None,
-        "error": None,
+        "weather": weather,
+        "error": error,
         # AI の使用量（Claude・Codex・Antigravity）を1行1サービスの表にしたもの
         "usage": usage.rows(),
         "usage_headers": usage.HEADERS,
         "battery": kindle.view(),
-        "show_train": (os.getenv("SHOW_TRAIN") or "1") != "0",
-        "train": None,
+        "show_train": show_train,
+        "train": train.view(now) if show_train else None,
     }
-    if ctx["show_train"]:
-        ctx["train"] = await train.view(now)
-    try:
-        ctx["weather"] = shape_weather(await fetch_weather(), now)
-    except Exception as e:  # 天気が取れなくても日付だけは出す
-        ctx["error"] = f"天気を取得できませんでした（{type(e).__name__}）"
-    return ctx

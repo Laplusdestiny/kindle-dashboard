@@ -69,6 +69,8 @@ docker compose up -d --build
 | `ORIENTATION` | `landscape`（横・既定）か `portrait`（縦） |
 | `LANDSCAPE_ROTATE` | 横長のデザインを回して、縦長PNG（1072×1448）で出力する（既定 `90`）。`90` は Kindle の下端（電源ボタン・USB）が左に来る向き。上下が逆なら `270`。`0` だと横長PNGのままになり、Kindle では右側が切れる |
 | `CACHE_SECONDS` | 同じ画像を使い回す秒数（既定60。ローカルで編集しながら見るなら `0`） |
+| `RENDER_TIMEOUT_SECONDS` | 1枚の描画にかけてよい秒数（既定20）。超えたら打ち切って、前回描けた画像を返す |
+| `WEATHER_POLL_MINUTES` | 天気を取得する間隔（分、既定10） |
 | `SHOW_CLAUDE` | `0` で Claude の行を隠す |
 | `SHOW_CODEX` | `0` で Codex の行を隠す |
 | `SHOW_AGY` | `0` で Antigravity の行を隠す |
@@ -82,6 +84,20 @@ docker compose up -d --build
 | `TRAIN_LABEL` | パネルの見出し（既定 `岡町 → 大阪梅田`） |
 | `TRAIN_TIMETABLE_URL` | 阪急の駅時刻表ページのURL。`{day}` が `w`（平日）/ `h`（土曜・休日）に置き換わる（既定は岡町駅 宝塚線 大阪梅田方面） |
 | `TRAIN_WINDOW_MINUTES` | 何分先までの発車を出すか（既定30） |
+
+## 応答を止めないための作り
+
+Kindle は画像が返るまで起きたまま待つので、サーバーの応答が遅いと電池を消耗します。そのため次のようにしています。
+
+- 天気・時刻表・使用量は、裏で定期的に取得して `data/` に保存します。画像を描くときは保存済みの値を読むだけで、外部には取りに行きません。
+- 外部の取得に失敗したときは、前回の値で表示を続けます（天気は3時間より古くなると出しません）。
+- 描画に失敗したり `RENDER_TIMEOUT_SECONDS` を超えたりしたら、エラーではなく前回描けた画像（`data/last_dash.png`）を返し、Chromium を起動し直します。
+- 使用量の取得（Claude → Codex → Antigravity）は、開始を5分ずつずらして同時に動かさないようにしています。
+- `docker compose logs` には、時刻つきで `/dash.png` ごとの所要時間が出ます。
+
+```
+2026-11-15 12:20:47 INFO kindle_dash_server.main: dash.png: 描画 0.38秒（順番待ち 0.00秒、battery=50）
+```
 
 ## AI の使用量を表示する（Claude・Codex・Antigravity）
 

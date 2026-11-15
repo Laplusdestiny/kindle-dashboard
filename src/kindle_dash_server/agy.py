@@ -131,8 +131,9 @@ def fetch_usage(timeout: float = 90) -> dict:
     return result
 
 
-async def poll_loop(on_update=None) -> None:
-    """起動直後に1回、その後 AGY_POLL_MINUTES ごとに取得する"""
+async def poll_loop(on_update=None, start_delay: float = 0) -> None:
+    """起動から start_delay 秒後に1回、その後 AGY_POLL_MINUTES ごとに取得する"""
+    await asyncio.sleep(start_delay)
     home = os.getenv("AGY_HOME_DIR")
     if home:
         Path(home).mkdir(parents=True, exist_ok=True)  # ~/.gemini の向け先（Docker のみ）

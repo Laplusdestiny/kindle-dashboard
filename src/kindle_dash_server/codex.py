@@ -156,8 +156,9 @@ def login_with_token() -> None:
         log.info("CODEX_ACCESS_TOKEN でログインしました")
 
 
-async def poll_loop(on_update=None) -> None:
-    """起動直後に1回、その後 CODEX_POLL_MINUTES ごとに取得する"""
+async def poll_loop(on_update=None, start_delay: float = 0) -> None:
+    """起動から start_delay 秒後に1回、その後 CODEX_POLL_MINUTES ごとに取得する"""
+    await asyncio.sleep(start_delay)
     home = os.getenv("CODEX_HOME")
     if home:
         Path(home).mkdir(parents=True, exist_ok=True)  # 無いと codex が起動しない
