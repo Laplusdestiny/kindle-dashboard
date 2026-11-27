@@ -30,7 +30,7 @@ docker compose build                                         # 本番と同じ�
   - 描画の流れ：HTML を Playwright の Chromium で撮影 → `to_kindle_png()` でグレースケール化 → 16階調に丸める →（必要なら回転）→ PNG。
   - エンドポイント：`/dash.png`（`CACHE_SECONDS` の間キャッシュ。`?battery=82` で Kindle の電池残量も受け取る）、`/preview`（撮影前のHTML）、`GET /claude-usage`・`/codex-usage`・`/agy-usage`（保存内容の確認用）、`/health`。
 - `claude.py` … Claude 使用量を受け取り（`normalize`）、`data/claude_usage.json` へ保存し、表示用に整形する（`view`）。
-- `train.py` … 阪急の駅時刻表ページを裏のループ（`poll_loop` → `refresh`）が1日1回取得して解析し（`parse_timetable`）、`data/train/` に保存する。平日・土休日は内閣府の祝日CSVで判定し、`view` は保存済みのファイルだけから `TRAIN_WINDOW_MINUTES` 分以内の発車を返す。
+- `train.py` … 阪急の駅時刻表ページを裏のループ（`poll_loop` → `refresh`）が1日1回取得して解析し（`parse_timetable`）、`data/train/` に保存する。平日・土休日は内閣府の祝日CSVで判定し、`view` は保存済みのファイルだけから `TRAIN_WINDOW_MINUTES` 分以内の発車を返す。徒歩 `TRAIN_WALK_MINUTES` 分で間に合わない電車は除き、最大 `TRAIN_MAX_ROWS` 本（既定8。9本以上は横置きで天気と重なる）に絞る。
   - 電車パネルを出すと `body.with-train` が付き、天気などの余白を詰めて1画面に収める。縦置きでは、3時間ごとの予報と3日分の予報を隠している。
   - AI の使用量は、1行1サービスの表（`.usage`）にしている。列は「5時間」「週間」。Antigravity は系統（Gemini・Claude/GPT・Argon）ごとに行を分け、見出し行を1つ置く。サービスや枠が増えると行が増えるので、追加したら横置き・縦置きの両方で収まるかを見る。
 - `codex.py` … Codex 使用量を `codex app-server` で定期取得し（`fetch_rate_limits` / `poll_loop`）、`data/codex_usage.json` へ保存する。
@@ -57,6 +57,14 @@ docker compose build                                         # 本番と同じ�
 使用量パネルは、データがある状態で見る。`examples/*.json` を各モジュールの `save()` で `data/` に入れてから描画する（README の「表示の確認」を参照）。
 
 確認用に起動したサーバーは PID を指定して止める（`ss -ltnp` で PID を調べる）。`pkill -f` は、パターンが自分のシェルのコマンドラインにも一致して、シェルごと落ちる。
+
+## テスト
+
+依存を増やさないため、標準の unittest で書いている（`tests/`）。
+
+```bash
+uv run python -m unittest discover -s tests
+```
 
 ## E-Ink のデザインルール
 
