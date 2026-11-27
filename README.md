@@ -84,6 +84,8 @@ docker compose up -d --build
 | `TRAIN_LABEL` | パネルの見出し（既定 `岡町 → 大阪梅田`） |
 | `TRAIN_TIMETABLE_URL` | 阪急の駅時刻表ページのURL。`{day}` が `w`（平日）/ `h`（土曜・休日）に置き換わる（既定は岡町駅 宝塚線 大阪梅田方面） |
 | `TRAIN_WINDOW_MINUTES` | 何分先までの発車を出すか（既定30） |
+| `TRAIN_WALK_MINUTES` | 家から駅まで歩く分数（既定0）。これより早く出る電車は間に合わないので出さない |
+| `TRAIN_MAX_ROWS` | 表に出す本数の上限（既定8、`0` で制限しない）。9本以上は横置きで天気の表示と重なる |
 
 ## 応答を止めないための作り
 
@@ -213,6 +215,8 @@ LANDSCAPE_ROTATE=0 uv run --env-file .env kindle-dash-snapshot -o out/dash.png
 
 - 時刻表は1日1回だけ取り直して `data/train/` に保存する。取得に失敗しても前回の分で表示を続ける。
 - 平日か土休日かは、内閣府の祝日CSV（月1回取得）で判定する。取れないときは土日だけで判定する。
+- 駅まで歩く時間（`TRAIN_WALK_MINUTES`）より早く出る電車は出さない。見出しに「徒歩N分」と添える。
+- 表は最大 `TRAIN_MAX_ROWS` 本（既定8本）。それより多い分は出さない。
 - 3時より前は前日のダイヤとして扱う。終電後は「次は 4:40」のように始発を出す。
 - 年末年始などの臨時ダイヤには対応していない。
 - 別の阪急の駅・方面にするには、駅ページ（例 `https://www.hankyu.co.jp/station/okamachi.html`）の時刻表リンク

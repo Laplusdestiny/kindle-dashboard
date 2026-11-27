@@ -4,6 +4,7 @@
 DATA_DIR/train/ に保存する。取得は裏のループ（poll_loop）が行い、時刻表は1日1回だけ取り直す。
 描画のとき（view）は保存済みのファイルだけを読んで、
 「今から TRAIN_WINDOW_MINUTES 分以内」の発車を計算する（外部には取りに行かない）。
+駅まで TRAIN_WALK_MINUTES 分かかるので、それより早く出る電車は出さない。表は TRAIN_MAX_ROWS 本まで。
 
 平日か土休日かは、内閣府の祝日CSVで判定する（取れなければ土日だけで判定）。
 """
@@ -46,6 +47,16 @@ def _dir() -> Path:
 
 def window_minutes() -> int:
     return int(os.getenv("TRAIN_WINDOW_MINUTES") or "30")
+
+
+def walk_minutes() -> int:
+    """駅まで歩く分数。これより早く出る電車は間に合わないので出さない"""
+    return max(0, int(os.getenv("TRAIN_WALK_MINUTES") or "0"))
+
+
+def max_rows() -> int:
+    """表に出す本数の上限（0 なら制限しない）。9本以上は天気の表示と重なる"""
+    return max(0, int(os.getenv("TRAIN_MAX_ROWS") or "8"))
 
 
 def parse_timetable(html: str) -> list[dict]:
@@ -152,9 +163,12 @@ def view(now: datetime | None = None) -> dict:
     """テンプレート用。保存済みの時刻表が無ければ error を入れて返す"""
     now = (now or datetime.now()).replace(second=0, microsecond=0)
     span = window_minutes()
+    walk = walk_minutes()
+    limit = max_rows()
     out = {
         "label": (os.getenv("TRAIN_LABEL") or "岡町 → 大阪梅田"),
         "span": span,
+        "walk": walk,
         "rows": [],
         "next": None,
         "error": None,
@@ -180,10 +194,11 @@ def view(now: datetime | None = None) -> dict:
         return out
 
     departures.sort(key=lambda x: x[0])
-    upcoming = [(t, tr) for t, tr in departures if t >= now]
+    # 今から歩いて間に合う電車だけを候補にする（駅に着くのと同時に出る電車は間に合う扱い）
+    upcoming = [(t, tr) for t, tr in departures if t >= now + timedelta(minutes=walk)]
     default_dest = out["label"].split("→")[-1].strip()
     for t, tr in upcoming:
-        if t > now + timedelta(minutes=span):
+        if t > now + timedelta(minutes=span) or (limit and len(out["rows"]) >= limit):
             break
         out["rows"].append({
             "time": f"{t.hour}:{t.minute:02d}",

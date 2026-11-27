@@ -240,7 +240,7 @@
   <section class="train">
     <div class="train-head">
       <span class="train-title">{{ train.label }}</span>
-      <span class="train-span">{{ train.span }}分以内の発車</span>
+      <span class="train-span">{{ train.span }}分以内の発車{% if train.walk %}・徒歩{{ train.walk }}分{% endif %}</span>
     </div>
     {% if train.error %}
       <div class="train-empty">{{ train.error }}</div>
@@ -254,7 +254,7 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="train-empty">{{ train.span }}分以内の発車はありません{% if train.next %}。次は <b>{{ train.next }}</b>{% endif %}</div>
+      <div class="train-empty">{{ train.span }}分以内{% if train.walk %}に間に合う{% else %}の{% endif %}発車はありません{% if train.next %}。次は <b>{{ train.next }}</b>{% endif %}</div>
     {% endif %}
   </section>
   {% endif %}
